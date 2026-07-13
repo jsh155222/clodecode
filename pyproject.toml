@@ -15,5 +15,8 @@ dependencies = [
 [project.scripts]
 capcut-auto = "capcut_auto.cli:main"
 
+[project.gui-scripts]
+capcut-auto-gui = "capcut_auto.gui:main"
+
 [tool.setuptools]
 packages = ["capcut_auto"]

@@ -10,16 +10,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from pathlib import Path
 
-from . import cutlist as cutlist_mod
-from . import silence as silence_mod
-from . import stutter as stutter_mod
-from . import subtitles as subtitles_mod
-from .draft_builder import SubtitleAppearance, build_draft, default_capcut_drafts_dir
-from .transcribe import transcribe as transcribe_audio
+from .pipeline import PipelineError, PipelineOptions, run_pipeline
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -64,111 +57,45 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv=None) -> int:
-    args = build_arg_parser().parse_args(argv)
-
-    video_path = Path(args.video)
-    if not video_path.exists():
-        print(f"오류: 영상 파일을 찾을 수 없습니다: {video_path}", file=sys.stderr)
-        return 1
-
-    workdir = Path(args.workdir) if args.workdir else Path("capcut_auto_work") / args.draft_name
-    workdir.mkdir(parents=True, exist_ok=True)
-
-    print(f"[1/6] 길이 확인 및 오디오 추출: {video_path}")
-    total_duration = silence_mod.get_duration(str(video_path))
-    audio_path = silence_mod.extract_audio(str(video_path), str(workdir / "audio.wav"))
-
-    silence_intervals = []
-    if not args.disable_silence_cut:
-        print("[2/6] 무음 구간 탐지 중...")
-        silence_intervals = silence_mod.detect_silence(
-            audio_path, noise_db=args.silence_db, min_silence_duration=args.min_silence
-        )
-        print(f"      무음 구간 {len(silence_intervals)}개 발견")
-
-    print("[3/6] 음성 인식 중 (faster-whisper, 시간이 걸릴 수 있습니다)...")
-    words = transcribe_audio(audio_path, model_size=args.whisper_model, language=args.language)
-    print(f"      단어 {len(words)}개 인식")
-
-    filler_intervals = []
-    repetition_intervals = []
-    if not args.disable_filler_cut:
-        filler_intervals = stutter_mod.detect_filler_words(words, max_filler_duration=args.max_filler_duration)
-    if not args.disable_repetition_cut:
-        repetition_intervals = stutter_mod.detect_repetitions(
-            words, max_gap=args.repeat_max_gap, min_repeats=args.repeat_min_count
-        )
-    print(f"[4/6] 필러워드 {len(filler_intervals)}개, 반복(말더듬) {len(repetition_intervals)}개 발견")
-
-    config = cutlist_mod.CutlistConfig(
+def _options_from_args(args: argparse.Namespace) -> PipelineOptions:
+    return PipelineOptions(
+        video=args.video,
+        draft_name=args.draft_name,
+        capcut_drafts_dir=args.capcut_drafts_dir,
+        workdir=args.workdir,
+        width=args.width,
+        height=args.height,
+        whisper_model=args.whisper_model,
+        language=args.language,
+        silence_db=args.silence_db,
+        min_silence=args.min_silence,
         silence_edge_padding=args.silence_edge_padding,
+        max_filler_duration=args.max_filler_duration,
+        repeat_max_gap=args.repeat_max_gap,
+        repeat_min_count=args.repeat_min_count,
         filler_edge_expand=args.filler_edge_expand,
         min_keep_duration=args.min_keep_duration,
         min_cut_duration=args.min_cut_duration,
+        subtitle_max_chars=args.subtitle_max_chars,
+        subtitle_max_duration=args.subtitle_max_duration,
+        subtitle_max_gap=args.subtitle_max_gap,
+        subtitle_size=args.subtitle_size,
+        disable_silence_cut=args.disable_silence_cut,
+        disable_filler_cut=args.disable_filler_cut,
+        disable_repetition_cut=args.disable_repetition_cut,
+        disable_subtitles=args.disable_subtitles,
+        dry_run=args.dry_run,
     )
-    result = cutlist_mod.build_cutlist(
-        total_duration, silence_intervals, filler_intervals, repetition_intervals, config
-    )
-    removed_pct = (result.removed_duration / total_duration * 100) if total_duration else 0.0
-    print(
-        f"[5/6] 컷 리스트 완료: 원본 {total_duration:.1f}s -> 편집 후 {result.kept_duration:.1f}s "
-        f"({removed_pct:.1f}% 제거, 컷 {len(result.cut_intervals)}개)"
-    )
 
-    srt_lines = []
-    srt_path = None
-    if not args.disable_subtitles:
-        remapped_words = subtitles_mod.remap_words_to_new_timeline(words, result.keep_intervals)
-        srt_lines = subtitles_mod.group_words_into_lines(
-            remapped_words,
-            max_chars=args.subtitle_max_chars,
-            max_duration=args.subtitle_max_duration,
-            max_gap=args.subtitle_max_gap,
-        )
-        srt_path = subtitles_mod.write_srt(srt_lines, str(workdir / "subtitle.srt"))
-        print(f"      자막 {len(srt_lines)}줄 생성 -> {srt_path}")
 
-    report = {
-        "video": str(video_path),
-        "total_duration_sec": total_duration,
-        "kept_duration_sec": result.kept_duration,
-        "removed_duration_sec": result.removed_duration,
-        "removed_pct": removed_pct,
-        "cut_intervals": [[iv.start, iv.end] for iv in result.cut_intervals],
-        "keep_intervals": [[iv.start, iv.end] for iv in result.keep_intervals],
-        "subtitle_lines": [[l.start, l.end, l.text] for l in srt_lines],
-        "srt_path": srt_path,
-    }
-    report_path = workdir / "report.json"
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"      분석 리포트 저장 -> {report_path}")
-
-    if args.dry_run:
-        print("[6/6] --dry-run 지정됨: CapCut 드래프트 생성을 건너뜁니다.")
-        return 0
-
-    drafts_dir = args.capcut_drafts_dir or default_capcut_drafts_dir()
-    if not drafts_dir:
-        print(
-            "오류: CapCut 드래프트 폴더 경로를 찾을 수 없습니다. "
-            "--capcut-drafts-dir 로 직접 지정하세요.",
-            file=sys.stderr,
-        )
+def main(argv=None) -> int:
+    args = build_arg_parser().parse_args(argv)
+    opts = _options_from_args(args)
+    try:
+        run_pipeline(opts, log=print)
+    except PipelineError as exc:
+        print(f"오류: {exc}", file=sys.stderr)
         return 1
-
-    print(f"[6/6] CapCut 드래프트 생성 중: {drafts_dir}/{args.draft_name}")
-    build_draft(
-        video_path=str(video_path),
-        keep_intervals=result.keep_intervals,
-        subtitle_lines=srt_lines,
-        draft_name=args.draft_name,
-        capcut_drafts_dir=drafts_dir,
-        width=args.width,
-        height=args.height,
-        subtitle_appearance=SubtitleAppearance(size=args.subtitle_size),
-    )
-    print("완료! CapCut에서 드래프트를 열어 확인하세요.")
     return 0
 
 

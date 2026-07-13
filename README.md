@@ -20,6 +20,8 @@
 
 컷/자막 로직(`capcut_auto/timeline.py`, `stutter.py`, `cutlist.py`, `subtitles.py`)은 ffmpeg나 whisper 없이도 순수 함수로 동작하며 `tests/`에서 유닛테스트로 검증됩니다.
 
+CLI(`cli.py`)와 데스크톱 GUI(`gui.py`)는 동일한 `capcut_auto/pipeline.py`의 `run_pipeline()`을 공유합니다.
+
 ## 설치
 
 ```bash
@@ -32,7 +34,21 @@ pip install -r requirements.txt
 
 > **주의**: pyCapCut은 리눅스/macOS에서 드래프트 파일 생성은 가능하지만, 실제 CapCut 앱에서 열어 렌더링/내보내기를 하려면 CapCut이 설치된 Windows(또는 지원 OS)로 드래프트 폴더를 옮기거나, 해당 OS에서 이 스크립트를 실행해야 합니다.
 
-## 사용법
+## 데스크톱 GUI
+
+CLI 대신 창을 띄워서 사용하고 싶다면 Tkinter GUI를 실행하세요 (Python 표준 라이브러리만 사용하므로 GUI 자체를 위한 추가 설치는 필요 없습니다. Windows/macOS의 python.org 설치판에는 기본 포함되어 있고, 리눅스는 배포판에 따라 `python3-tk` 패키지가 필요할 수 있습니다):
+
+```bash
+python -m capcut_auto.gui
+```
+
+- **기본 설정** 탭: 영상 파일, 드래프트 이름, CapCut 드래프트 폴더(자동 감지 버튼 제공), 음성 인식 모델/언어, 기능별 on/off, "미리보기만 실행"(dry-run) 체크박스
+- **고급 설정** 탭: 무음/필러/반복 탐지 임계값, 자막 줄바꿈 옵션 등 CLI의 모든 튜닝 파라미터
+- 실행을 누르면 백그라운드 스레드에서 파이프라인이 돌아가며, 진행 로그가 실시간으로 표시되고 완료/오류 시 요약 팝업이 뜹니다.
+
+pip으로 설치했다면 `capcut-auto-gui` 명령으로도 실행할 수 있습니다(Windows에서는 콘솔 창 없이 실행됨).
+
+## CLI 사용법
 
 ```bash
 python -m capcut_auto.cli \
