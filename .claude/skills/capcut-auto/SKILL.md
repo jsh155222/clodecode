@@ -40,13 +40,20 @@ capcut_auto/
   draft_builder.py       pycapcut으로 CapCut 드래프트 생성 (video 트랙 + 자막 text 트랙 +
                         선택적 hook_text 전용 text 트랙)
   project_store.py       서버용 인메모리 프로젝트 상태 저장소 (Project/CutCandidate/JobState) - DB 없음
-  server.py              FastAPI 백엔드. MODE 1의 3~9단계를 위 모듈들에 연결하는 REST API (아래 표 참고)
+  server.py              FastAPI 백엔드. MODE 1의 3~9단계를 위 모듈들에 연결하는 REST API (아래 표 참고).
+                          아직 ai/ 패키지를 호출하는 엔드포인트는 없음(엔진+테스트만 이번 단계 범위) -
+                          기존 3/4/6단계는 여전히 규칙 기반(silence/stutter/hooks.py)만 사용함
   pipeline.py             PipelineOptions/PipelineResult/run_pipeline() - CLI/GUI 전용 단일 파이프라인
                           (server.py는 이걸 쓰지 않고 각 단계를 개별 호출 - 사용자가 단계 사이에
                           검토/수정할 수 있어야 하기 때문)
   cli.py / gui.py         기존 CLI/Tkinter GUI, run_pipeline() 기반, 그대로 유지됨
-tests/                    115개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
-                          test_*_integration.py는 실제 ffmpeg 있을 때만 돌아감(skipUnless)
+  ai/                     AI 기반 자동 편집 핵심 기능 (아래 "capcut_auto/ai/" 절 참고).
+                          기존 규칙 기반 파이프라인과 독립적으로 추가된 레이어 - server.py의
+                          3/4/6단계는 아직 이 패키지를 쓰지 않음(연결은 다음 단계)
+tests/                    188개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
+                          test_*_integration.py는 실제 ffmpeg 있을 때만 돌아감(skipUnless).
+                          ai_test_helpers.py는 진짜 네트워크 호출 없이 client.py를 검증하는
+                          가짜(fake) Anthropic 클라이언트 - 모든 tests/test_ai_*.py가 공유함
 install.bat / run.bat     Windows 원클릭 설치/실행 (CLI/GUI용, 웹앱과는 별개)
 
 webapp/
@@ -62,6 +69,74 @@ webapp/
                                    "이 계획으로 영상 편집 시작" 버튼을 누르면 continueToAutoEdit(plan)으로
                                    MODE 1로 즉시 전환됨 (아래 "MODE 1 ↔ MODE 2 인계" 참고)
 ```
+
+## capcut_auto/ai/ - AI 자동 편집 핵심 기능
+
+실제 Claude API(Structured Outputs)를 호출하는 새 레이어. `pip install anthropic jsonschema`
+필요(requirements.txt에 이미 추가됨). **아직 server.py 엔드포인트나 webapp UI에 연결되지
+않은 순수 엔진 + 테스트 단계**임 - 다음 단계에서 REST 엔드포인트로 노출하고 프론트엔드에
+연결하는 작업이 남아 있다.
+
+```
+ai/
+  client.py              공통 AI 호출: AiModuleRequest, call_ai_module(request, *, model=,
+                          max_tokens=, client=, sleep_fn=). system_prompt와 input_data(JSON
+                          직렬화)를 분리해서 보내고, output_config.format(json_schema)으로
+                          Structured Outputs를 강제한 뒤 jsonschema로 재검증한다.
+                          네트워크 오류(연결/429/5xx) 최대 2회 재시도, JSON파싱/스키마 오류는
+                          합쳐서 1회만 수정 요청, 그래도 실패하면 AiModuleError를 던진다 -
+                          호출자는 이 예외를 잡아 "해당 기능만" 폴백해야 한다.
+                          기본 모델은 claude-opus-4-8 (claude-api 스킬의 기본 모델 규칙을 따름).
+  schemas.py              각 모듈의 출력 JSON Schema (VIDEO_STRUCTURE/CUT_CANDIDATES/
+                          SUBTITLE_OPTIMIZE/SUBTITLE_HIGHLIGHT/HOOK_CANDIDATES)
+  video_structure.py      VideoSectionRole(HOOK/PROBLEM/CAUSE/SOLUTION/PROCESS/PROOF/RESULT/
+                          CTA/TRANSITION/UNKNOWN), analyze_video_structure(), 실패 시
+                          fallback_single_unknown_section()
+  cut_candidates.py       CutAction(AUTO_CUT/REVIEW/KEEP), CutCandidate, ProtectedInterval,
+                          analyze_cut_candidates(), meets_auto_apply_criteria()(UI 배지 용도일
+                          뿐 실제 자동적용에는 안 씀), fallback_from_rule_based_intervals()
+                          (AI 실패 시 기존 silence/stutter 결과를 재활용), review_candidates()
+                          (사용자가 후보별 action을 결정), approved_cut_intervals()
+                          (**decisions 딕셔너리에 사용자가 명시적으로 AUTO_CUT을 기록한
+                          후보만** Interval로 뽑음 - candidate.action이 이미 AUTO_CUT이어도
+                          decisions에 없으면 절대 적용 안 됨. "모든 후보는 사용자 검토 후 적용"
+                          정책을 코드로 강제하기 위한 설계)
+  cut_apply.py            AI 아닌 순수 로직 + 실제 ffmpeg. clip_to_video_range(),
+                          snap_to_word_boundaries()(컷 경계를 더 가까운 단어 경계로 스냅해
+                          음절 반토막 방지), apply_approved_cuts()(병합+클램프+스냅 후
+                          keep_intervals 재계산, 전후 미리보기 정보 포함), EditHistory
+                          (undo/redo/revert_to_original 스냅샷 스택),
+                          render_crossfade_preview()(실제 ffmpeg로 keep_intervals만 이어붙인
+                          미리보기 렌더링 - 진짜 acrossfade 대신 각 클립 경계에 afade in/out만
+                          걸어 오디오/비디오 동기화가 안 어긋나게 함 - real ffmpeg 통합 테스트로
+                          검증됨, 5초 keep 합계에 대해 출력 길이 ≈5초 확인)
+  timeline_recalc.py      recalculate_words/subtitle_lines/sections/hook_range,
+                          recalculate_timeline()(전체 파이프라인, 실패하면 success=False +
+                          원본 값을 그대로 담아 반환 - 호출자는 이걸 보고 내보내기를 막고
+                          EditHistory로 원상복구해야 함). 효과음/BGM/크롭/줌은 아직 기능
+                          자체가 없어서 재계산 대상에서 제외(주석에 명시)
+  subtitle_optimizer.py   optimize_subtitles(), validate_optimized_line()(2줄/14자/조사분리/
+                          숫자단위분리/0.7초 노출/시간겹침 규칙을 코드에서 검증). 규칙 위반한
+                          "줄 하나"는 그 줄만 원본으로 폴백, 최종 결과가 여전히 겹치면(회복
+                          불가) 전체를 원본으로 폴백하는 2단계 안전망
+  subtitle_highlight.py   SubtitleHighlightType, generate_highlights(), validate_highlight()
+                          (강조 단어가 실제 자막 텍스트에 포함돼 있는지 반드시 코드에서 검증 -
+                          AI가 지어낸 단어는 버림), 한 줄 최대 2개
+  hook_ai.py              HookType, HookCandidate, generate_ai_hooks(), validate_hook_grounding()
+                          (evidenceSegmentIds가 전부 실재하는 segment id를 가리키는지 검증 -
+                          지어낸 근거의 훅은 코드에서 버림)
+  category_rules.py       categories.py의 CategoryRule에 추가된 protected_scene_keywords/
+                          subtitle_density_label을 AI 입력으로 연결 (build_cut_protection_rules,
+                          build_subtitle_density_rule, category_label)
+```
+
+**아직 검증되지 않은 부분**: 실제 Claude API 호출(진짜 ANTHROPIC_API_KEY로 정상 응답을
+받는지)은 이 샌드박스에 API 키가 없어서 검증 못 했다. 대신 `tests/ai_test_helpers.py`의
+가짜(fake) Anthropic 클라이언트로 `client.messages.create()` 반환값/예외를 흉내내서
+`call_ai_module()`의 재시도/스키마검증/폴백 분기를 전부 실제로 통과시켰다 - 요청 페이로드
+구성(system/messages 분리, JSON 직렬화)과 응답 파싱/검증 로직은 진짜 코드지만, "Claude가
+실제로 이 프롬프트에 이렇게 응답한다"는 것 자체는 미검증이다. 실사용자가 API 키를 넣고
+한 번 실행해보면 프롬프트 튜닝이 필요할 수 있다는 점을 안내할 것.
 
 ## MODE 1 ↔ MODE 2 인계 (촬영 계획 → 자동 편집)
 
@@ -131,7 +206,7 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 - **hooks.py도 LLM이 아니라 카테고리 키워드(categories.py) + 문장 템플릿 조합**이다. API 키 인프라가
   프로젝트에 전혀 없어서(환경변수/키 관리 전무) 이렇게 시작함. 실제 LLM 연결 시
   `generate_hook_suggestions(topic, category, max_suggestions)` 시그니처만 유지하고 내부만 바꾸면 됨.
-- **server.py는 FastAPI TestClient로 115개 백엔드+엔진 테스트 중 23개(`tests/test_server.py`)를
+- **server.py는 FastAPI TestClient로 188개 백엔드+엔진 테스트 중 23개(`tests/test_server.py`)를
   실제로 mock 기반 검증함** — 이 과정에서 실제 버그(`library.get(mood, library["neutral"])`가
   "neutral" 키 없으면 KeyError 나는 문제, 파이썬은 기본값 인자를 즉시 평가함)를 잡아 고침.
   이런 패턴(`.get(key, dict[fallback_key])`)은 항상 `.get(key) or .get(fallback) or ...`로 바꿀 것.
@@ -214,7 +289,7 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 
 ```bash
 # 1. 파이썬 순수 로직 전체 (항상 통과해야 함, ffmpeg/whisper/pycapcut 불필요)
-python3 -m unittest discover -s tests -v   # 115개
+python3 -m unittest discover -s tests -v   # 188개
 
 # 2. .bat 파일을 건드렸다면 CRLF/괄호 이스케이프 재확인 (위 1, 2번 참고)
 

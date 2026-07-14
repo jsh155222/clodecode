@@ -175,3 +175,26 @@ npm run dev   # http://localhost:5173 접속
 python -m unittest tests.test_server -v   # 백엔드 API (mock 기반, 23개)
 cd webapp && npx vitest run                # 프론트엔드 (39개)
 ```
+
+## AI 자동 편집 핵심 기능 (capcut_auto/ai/, 진행 중)
+
+실제 Claude API(Structured Outputs)를 호출해 영상 구조 분석, 컷 후보 판단(신뢰도/맥락
+위험도 포함), 자막 최적화·강조, 훅 후보 생성을 수행하는 새 엔진 레이어입니다.
+
+- **아직 REST 엔드포인트나 웹앱 UI에 연결되지 않았습니다.** 이번 단계는 엔진 코드와
+  테스트까지만 포함하며, `server.py`의 3/4/6단계는 여전히 기존 규칙 기반 로직만 씁니다.
+- 사용하려면 `ANTHROPIC_API_KEY` 환경변수가 필요합니다(코드에는 하드코딩되어 있지 않고,
+  프론트엔드에도 절대 노출되지 않습니다).
+- AI 호출이 재시도/스키마 수정 요청까지 실패하면 해당 기능만 예외(`AiModuleError`)를
+  던지며, 각 모듈은 기존 규칙 기반 기능(무음/필러 탐지, 템플릿 훅 등)으로 폴백할 수 있게
+  설계되어 있습니다.
+- 실제 Claude API 호출 자체(진짜 키로 정상 응답을 받는지)는 이 저장소의 개발 환경에
+  API 키가 없어 검증하지 못했습니다. 대신 가짜(fake) Anthropic 클라이언트로 재시도/
+  JSON 오류/스키마 오류/네트워크 오류·타임아웃 등 14가지 시나리오를 테스트했습니다.
+
+```bash
+python -m unittest tests.test_ai_client tests.test_ai_cut_candidates \
+  tests.test_ai_cut_apply tests.test_ai_timeline_recalc \
+  tests.test_ai_subtitle_optimizer tests.test_ai_subtitle_highlight \
+  tests.test_ai_hook tests.test_ai_fallback_and_category -v   # 73개
+```

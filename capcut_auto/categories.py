@@ -43,6 +43,11 @@ class CategoryRule:
     hook_keywords: List[str] = field(default_factory=list)
     # audio_mix.py가 기본으로 추천할 배경음 무드
     default_bgm_mood: str = "neutral"
+    # ai/cut_candidates.py가 AI에게 "이 카테고리에서는 이런 장면을 보수적으로 판단하라"고
+    # 알려줄 때 쓰는 카테고리별 보호 장면 설명
+    protected_scene_keywords: List[str] = field(default_factory=list)
+    # ai/subtitle_optimizer.py가 AI에게 전달하는 카테고리별 자막 밀도 가이드
+    subtitle_density_label: str = "일반적인 밀도로 작성"
 
 
 # 카테고리별로 컷 민감도를 다르게 둔다. 예: 여행/캠핑은 자연광/현장음이 있는 롱테이크가
@@ -56,6 +61,8 @@ CATEGORY_RULES: Dict[ContentCategory, CategoryRule] = {
         ),
         hook_keywords=["살림 꿀팁", "이렇게 하면 편해요", "당장 따라해보세요"],
         default_bgm_mood="cozy",
+        protected_scene_keywords=["정리 완료 결과물", "수납 전후 비교"],
+        subtitle_density_label="핵심 팁 위주로 간결하게, 정리 단계는 순서를 놓치지 않게 유지",
     ),
     ContentCategory.CLEANING: CategoryRule(
         category=ContentCategory.CLEANING,
@@ -64,6 +71,8 @@ CATEGORY_RULES: Dict[ContentCategory, CategoryRule] = {
         ),
         hook_keywords=["청소 전후 비교", "이 방법 실화입니다", "5분만에 끝내는"],
         default_bgm_mood="upbeat",
+        protected_scene_keywords=["청소 전후 비교", "얼룩/오염 제거 결과"],
+        subtitle_density_label="정보 전달 속도가 빠르므로 짧고 간결하게",
     ),
     ContentCategory.FOOD: CategoryRule(
         category=ContentCategory.FOOD,
@@ -72,6 +81,8 @@ CATEGORY_RULES: Dict[ContentCategory, CategoryRule] = {
         ),
         hook_keywords=["이 조합 미쳤어요", "레시피 저장 필수", "집에서 이렇게 쉽게"],
         default_bgm_mood="warm",
+        protected_scene_keywords=["레시피 계량/순서", "시식 반응", "완성 결과물"],
+        subtitle_density_label="레시피 순서와 계량은 놓치지 않도록 명확하게 유지",
     ),
     ContentCategory.PARENTING: CategoryRule(
         category=ContentCategory.PARENTING,
@@ -80,6 +91,8 @@ CATEGORY_RULES: Dict[ContentCategory, CategoryRule] = {
         ),
         hook_keywords=["육아 선배들이 알려주는", "이거 몰랐으면 손해", "우리 아이가 달라졌어요"],
         default_bgm_mood="gentle",
+        protected_scene_keywords=["아이 안전 관련 장면", "사용 방법/주의사항"],
+        subtitle_density_label="천천히 읽을 수 있도록 여유 있는 밀도로 작성",
     ),
     ContentCategory.BEAUTY: CategoryRule(
         category=ContentCategory.BEAUTY,
@@ -88,6 +101,8 @@ CATEGORY_RULES: Dict[ContentCategory, CategoryRule] = {
         ),
         hook_keywords=["이 제품 실화냐", "발색 미쳤다", "1분 만에 되는"],
         default_bgm_mood="upbeat",
+        protected_scene_keywords=["발색/피부 결과 비교", "제품 사용법"],
+        subtitle_density_label="제품명과 사용 단계는 명확하게, 나머지는 간결하게",
     ),
     ContentCategory.TRAVEL: CategoryRule(
         category=ContentCategory.TRAVEL,
@@ -96,6 +111,8 @@ CATEGORY_RULES: Dict[ContentCategory, CategoryRule] = {
         ),
         hook_keywords=["숨겨진 여행지", "여기 안 가면 후회함", "이번 여행 코스 정리"],
         default_bgm_mood="cinematic",
+        protected_scene_keywords=["절경/풍경 장면", "감정 반응"],
+        subtitle_density_label="풍경/감성 장면은 자막을 최소화하고 여백을 살림",
     ),
     ContentCategory.CAMPING: CategoryRule(
         category=ContentCategory.CAMPING,
@@ -104,6 +121,8 @@ CATEGORY_RULES: Dict[ContentCategory, CategoryRule] = {
         ),
         hook_keywords=["이 장비 하나로 끝", "캠핑 초보 필수 코스", "불멍 각 나오는"],
         default_bgm_mood="cinematic",
+        protected_scene_keywords=["불멍/자연음 장면", "장비 설치 핵심 절차"],
+        subtitle_density_label="자연음/ASMR 구간은 자막을 최소화",
     ),
 }
 
