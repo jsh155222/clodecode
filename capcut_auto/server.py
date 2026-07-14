@@ -31,6 +31,7 @@ from . import visual_correction as visual_correction_mod
 from .categories import CATEGORY_LABELS, ContentCategory, get_rule
 from .hooks import generate_hook_suggestions
 from .project_store import CutCandidate, Project, ProjectStore
+from .shooting_guide import ShootingGuideInput, generate_shooting_plan
 from .subtitles import SubtitleLine
 from .timeline import Interval
 from .transcribe import transcribe as transcribe_audio
@@ -462,3 +463,67 @@ def get_export_status(project_id: str):
     response = project.job("export").to_dict()
     response["draftName"] = project.draft_name
     return response
+
+
+# ------------------------------------------------- MODE 2: 촬영 가이드
+# MODE 1과 입출력이 완전히 달라(영상 파일 없음, 텍스트만 입출력) project_store를
+# 전혀 쓰지 않는 상태 없는(stateless) 엔드포인트로 분리한다. 생성이 빠르고
+# 순수 함수라 백그라운드 작업/폴링도 필요 없다.
+class ShootingGuideRequest(BaseModel):
+    topic: str
+    category: str
+    productOrSituation: str
+    targetDuration: str
+    location: str = ""
+    equipment: str = ""
+    faceOnCamera: bool = False
+    mustShowScenes: str = ""
+    availableTime: str = ""
+    notes: str = ""
+
+
+@app.post("/api/shooting-guide")
+def create_shooting_guide(body: ShootingGuideRequest):
+    try:
+        category = ContentCategory(body.category)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 카테고리: {body.category}")
+
+    guide_input = ShootingGuideInput(
+        topic=body.topic,
+        category=category,
+        product_or_situation=body.productOrSituation,
+        target_duration=body.targetDuration,
+        location=body.location,
+        equipment=body.equipment,
+        face_on_camera=body.faceOnCamera,
+        must_show_scenes=body.mustShowScenes,
+        available_time=body.availableTime,
+        notes=body.notes,
+    )
+    try:
+        plan = generate_shooting_plan(guide_input)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "topic": plan.topic,
+        "category": plan.category.value,
+        "categoryLabel": plan.category_label,
+        "targetDurationLabel": plan.target_duration_label,
+        "totalEstimatedSeconds": plan.total_estimated_seconds,
+        "equipmentTips": plan.equipment_tips,
+        "warnings": plan.warnings,
+        "shots": [
+            {
+                "order": s.order,
+                "angle": s.angle,
+                "angleLabel": s.angle_label,
+                "title": s.title,
+                "description": s.description,
+                "estimatedSeconds": s.estimated_seconds,
+                "tip": s.tip,
+            }
+            for s in plan.shots
+        ],
+    }

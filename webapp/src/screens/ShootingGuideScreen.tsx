@@ -6,6 +6,7 @@ import { SelectField } from '../components/SelectField'
 import { StatusMessage } from '../components/StatusMessage'
 import { TextField } from '../components/TextField'
 import { useProject } from '../state/ProjectContext'
+import { createShootingGuide, type ShootingPlanDto } from '../api/client'
 import { EMPTY_SHOOTING_GUIDE_INPUT, isShootingGuideInputComplete, type ShootingGuideInput } from './shootingGuideTypes'
 import styles from './ShootingGuideScreen.module.css'
 
@@ -20,14 +21,13 @@ interface ShootingGuideScreenProps {
   onBack: () => void
 }
 
-/**
- * MODE 2(AI 촬영 가이드) 입력 화면 + 빈 결과 화면.
- * 이번 단계에서는 실제 촬영 계획 생성 로직은 구현하지 않는다.
- */
+/** MODE 2(AI 촬영 가이드) 입력 화면 + 촬영 계획(앵글/순서) 결과 화면. */
 export function ShootingGuideScreen({ onBack }: ShootingGuideScreenProps) {
   const { category, setCategory } = useProject()
   const [input, setInput] = useState<ShootingGuideInput>({ ...EMPTY_SHOOTING_GUIDE_INPUT, category })
-  const [submitted, setSubmitted] = useState(false)
+  const [plan, setPlan] = useState<ShootingPlanDto | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const update = <K extends keyof ShootingGuideInput>(key: K, value: ShootingGuideInput[K]) => {
     setInput((prev) => ({ ...prev, [key]: value }))
@@ -38,16 +38,68 @@ export function ShootingGuideScreen({ onBack }: ShootingGuideScreenProps) {
     update('category', next)
   }
 
-  if (submitted) {
+  const handleSubmit = async () => {
+    if (!input.category) return
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await createShootingGuide({
+        topic: input.topic,
+        category: input.category,
+        productOrSituation: input.productOrSituation,
+        targetDuration: input.targetDuration,
+        location: input.location,
+        equipment: input.equipment,
+        faceOnCamera: input.faceOnCamera,
+        mustShowScenes: input.mustShowScenes,
+        availableTime: input.availableTime,
+        notes: input.notes,
+      })
+      setPlan(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (plan) {
     return (
       <div>
         <h1 className="screen-title">촬영 계획</h1>
-        <div className={styles.resultBox}>
-          <StatusMessage variant="info">
-            촬영 계획 자동 생성 기능은 다음 단계에서 연결될 예정입니다. 입력하신 내용은 저장되어 있어요.
-          </StatusMessage>
-        </div>
-        <Button variant="secondary" onClick={() => setSubmitted(false)} className={styles.backToFormButton}>
+        <p className="screen-description">
+          {plan.categoryLabel} · 예상 촬영 분량 약 {Math.round(plan.totalEstimatedSeconds / 60)}분
+        </p>
+
+        {plan.warnings.map((w) => (
+          <div key={w} className={styles.resultBox}>
+            <StatusMessage variant="warning">{w}</StatusMessage>
+          </div>
+        ))}
+
+        <ol className={styles.shotList}>
+          {plan.shots.map((shot) => (
+            <li key={shot.order} className={styles.shotCard}>
+              <div className={styles.shotHeader}>
+                <span className={styles.shotOrder}>{shot.order}</span>
+                <span className={styles.angleBadge}>{shot.angleLabel}</span>
+                <span className={styles.shotSeconds}>약 {shot.estimatedSeconds}초</span>
+              </div>
+              <h3 className={styles.shotTitle}>{shot.title}</h3>
+              <p className={styles.shotDescription}>{shot.description}</p>
+              {shot.tip ? <p className={styles.shotTip}>💡 {shot.tip}</p> : null}
+            </li>
+          ))}
+        </ol>
+
+        <h2 className={styles.sectionTitle}>장비 팁</h2>
+        <ul className={styles.tipList}>
+          {plan.equipmentTips.map((tip) => (
+            <li key={tip}>{tip}</li>
+          ))}
+        </ul>
+
+        <Button variant="secondary" onClick={() => setPlan(null)} className={styles.backToFormButton}>
           입력 내용 수정하기
         </Button>
         <Button onClick={onBack} className={styles.nextButton}>
@@ -113,12 +165,18 @@ export function ShootingGuideScreen({ onBack }: ShootingGuideScreenProps) {
         </CollapsibleSection>
       </div>
 
+      {error ? (
+        <div className={styles.resultBox}>
+          <StatusMessage variant="warning">{error}</StatusMessage>
+        </div>
+      ) : null}
+
       <Button
-        onClick={() => setSubmitted(true)}
-        disabled={!isShootingGuideInputComplete(input)}
+        onClick={handleSubmit}
+        disabled={!isShootingGuideInputComplete(input) || loading}
         className={styles.nextButton}
       >
-        촬영 계획 만들기
+        {loading ? '촬영 계획 만드는 중...' : '촬영 계획 만들기'}
       </Button>
     </div>
   )

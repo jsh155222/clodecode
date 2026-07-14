@@ -310,5 +310,74 @@ class TestSummary(ServerTestCase):
         self.assertFalse(data["audioApplied"])
 
 
+class TestShootingGuideEndpoint(ServerTestCase):
+    def test_generates_plan_for_valid_input(self):
+        response = self.client.post(
+            "/api/shooting-guide",
+            json={
+                "topic": "원룸 정리 루틴",
+                "category": "LIVING",
+                "productOrSituation": "옷장 정리",
+                "targetDuration": "1_TO_3MIN",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data["categoryLabel"], "살림")
+        self.assertGreater(len(data["shots"]), 0)
+        self.assertEqual(data["shots"][0]["order"], 1)
+        self.assertIn("angleLabel", data["shots"][0])
+
+    def test_optional_fields_affect_output(self):
+        response = self.client.post(
+            "/api/shooting-guide",
+            json={
+                "topic": "김치볶음밥 레시피",
+                "category": "FOOD",
+                "productOrSituation": "김치볶음밥",
+                "targetDuration": "UNDER_1MIN",
+                "equipment": "삼각대",
+                "faceOnCamera": False,
+                "mustShowScenes": "완성 후 한입 먹는 장면",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(any("삼각대" in tip for tip in data["equipmentTips"]))
+        self.assertTrue(any(s["description"] == "완성 후 한입 먹는 장면" for s in data["shots"]))
+        self.assertNotIn("FACE_TALK", [s["angle"] for s in data["shots"]])
+
+    def test_invalid_category_returns_400(self):
+        response = self.client.post(
+            "/api/shooting-guide",
+            json={
+                "topic": "주제",
+                "category": "NOT_REAL",
+                "productOrSituation": "상황",
+                "targetDuration": "1_TO_3MIN",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_empty_topic_returns_400(self):
+        response = self.client.post(
+            "/api/shooting-guide",
+            json={
+                "topic": "   ",
+                "category": "TRAVEL",
+                "productOrSituation": "상황",
+                "targetDuration": "1_TO_3MIN",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_missing_required_field_returns_422(self):
+        response = self.client.post(
+            "/api/shooting-guide",
+            json={"topic": "주제", "category": "TRAVEL"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 ---
 name: capcut-auto
-description: Use when working on this repo's capcut_auto/ pycapcut-based CapCut auto-editing engine (silence/filler-word/stutter auto-cut, auto-subtitles, visual correction, audio mixing, hook generation), its FastAPI backend (server.py), the webapp/ React frontend (mode/category selection, 9-step AUTO_EDIT wizard, SHOOTING_GUIDE form), its Tkinter GUI/CLI, or its Windows install.bat/run.bat installer. Also use when the user asks in Korean or English to build/extend/debug "CapCut 자동 편집", "무음 컷", "버벅임/필러워드 컷", "자막 자동 생성", "화면 보정", "배경음/효과음", "훅 문구", a "pycapcut" automation, or the webapp/backend integration, or reports install.bat/run.bat errors. Trigger even if they don't name the file paths directly - match on the task shape, not just exact keywords.
+description: Use when working on this repo's capcut_auto/ pycapcut-based CapCut auto-editing engine (silence/filler-word/stutter auto-cut, auto-subtitles, visual correction, audio mixing, hook generation, shooting-guide/shot-list generation), its FastAPI backend (server.py), the webapp/ React frontend (mode/category selection, 9-step AUTO_EDIT wizard, SHOOTING_GUIDE form + result), its Tkinter GUI/CLI, or its Windows install.bat/run.bat installer. Also use when the user asks in Korean or English to build/extend/debug "CapCut 자동 편집", "무음 컷", "버벅임/필러워드 컷", "자막 자동 생성", "화면 보정", "배경음/효과음", "훅 문구", "촬영 가이드/앵글/촬영 순서", a "pycapcut" automation, or the webapp/backend integration, or reports install.bat/run.bat errors. Trigger even if they don't name the file paths directly - match on the task shape, not just exact keywords.
 ---
 
 # capcut-auto: pycapcut CapCut 자동 편집 엔진 + 웹앱
@@ -30,6 +30,9 @@ capcut_auto/
   categories.py         ContentCategory enum(LIVING/CLEANING/FOOD/PARENTING/BEAUTY/TRAVEL/CAMPING),
                         카테고리별 CutlistConfig/훅 키워드/BGM 무드 (CATEGORY_RULES)
   hooks.py              카테고리+주제 → 훅 문구 후보 (템플릿 기반, LLM 아님 - 아래 참고)
+  shooting_guide.py      MODE 2용: 카테고리+주제+제품/상황+목표 길이 → 앵글/촬영 순서(ShootingPlan)
+                        생성 (역시 템플릿 기반, LLM 아님). project_store/서버 상태 전혀 안 씀 -
+                        영상 파일이 없는 완전히 별도 흐름이라 순수 함수로 독립시킴
   visual_correction.py  ffmpeg 고전 영상처리: signalstats 밝기 측정 → eq 필터 자동 보정,
                         libvidstab 2-pass 흔들림 안정화 (딥러닝 아님, 결정론적)
   audio_mix.py           배경음(무드별 화음 루프, ffmpeg lavfi로 절차적 생성) + 컷 전환 효과음,
@@ -58,7 +61,9 @@ webapp/
   src/screens/ShootingGuideScreen.tsx  MODE 2 입력 폼 + 빈 결과 화면 (계획 생성 로직은 아직 없음 - 의도된 범위)
 ```
 
-## server.py REST API (전부 `/api/projects/{id}/...`)
+## server.py REST API
+
+MODE 1은 전부 `/api/projects/{id}/...` (project_store 상태 기반):
 
 | 메서드/경로 | 용도 |
 |---|---|
@@ -70,6 +75,12 @@ webapp/
 | `GET .../bgm-library`, `PATCH .../audio-settings`, `POST`/`GET .../audio` | 7단계: 배경음/효과음 (폴링) |
 | `GET .../summary` | 8단계: 지금까지 선택 요약 |
 | `POST`/`GET .../export` | 9단계: draft_builder.build_draft 호출 (폴링) |
+
+MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
+
+| 메서드/경로 | 용도 |
+|---|---|
+| `POST /api/shooting-guide` | topic/category/productOrSituation/targetDuration(필수) + location/equipment/faceOnCamera/mustShowScenes/availableTime/notes(선택) → `shooting_guide.generate_shooting_plan()` 호출, 앵글/촬영 순서(ShootingPlan) 즉시 반환. 빠른 순수 함수라 폴링 불필요 |
 
 모든 "무거운" 단계(analyze/correction/audio/export)는 **같은 패턴**: POST가 스레드를 띄우고 즉시
 `{"status":"running"}` 반환, 같은 경로 GET으로 `{status, log, error}`를 폴링. `Project.job(name)`이
@@ -108,6 +119,11 @@ webapp/
 - **CORS 주의**: `server.py`는 `http://localhost:5173`/`http://127.0.0.1:5173`만 허용한다(Vite 기본 포트).
   다른 포트로 `npm run dev -- --port XXXX`를 실행하면 프론트엔드가 백엔드를 호출할 때 CORS 에러로
   전부 막힌다 — 이걸 실제로 겪었음. 포트를 바꿔야 한다면 `server.py`의 `allow_origins`도 같이 바꿀 것.
+- **MODE 2(shooting_guide.py + `/api/shooting-guide`)도 실제 uvicorn+vite+Playwright로 검증함**:
+  카테고리별 앵글 템플릿, 목표 길이별 샷 개수 스케일링(`_select_templates`), `mustShowScenes`가
+  마지막 샷 앞에 정확히 삽입되는 것, `faceOnCamera=false`일 때 FACE_TALK이 손 클로즈업+내레이션
+  제안으로 바뀌는 것, 장비 키워드 매칭 팁, 촬영 가능 시간 부족 경고까지 브라우저에서 실제로 확인함.
+  MODE 1과 달리 project_store를 안 쓰는 완전 stateless 엔드포인트라 폴링/작업 상태 관리가 없다.
 - **faster-whisper 모델 다운로드(huggingface.co), ffmpeg 다운로드(gyan.dev)만 이 개발 샌드박스에서
   네트워크 정책상 차단되어 미검증** - 표준적인 방식이라 인터넷 연결 있는 일반 환경에서는 정상 동작할
   것으로 신뢰해도 됨. 이 두 가지를 검증해야 하면 실제 사용자 PC에서만 가능.
@@ -132,6 +148,11 @@ webapp/
 8. **RTL(`@testing-library/react`)에서 `getByRole('button', {name: '살림'})` 같은 정확 문자열 매칭이
    선택 후 실패** → `CategoryCard`가 선택되면 접근성 이름에 "선택됨"이 추가되어 `'살림'` !=
    `'살림 선택됨'`. 선택 상태가 바뀔 수 있는 요소는 항상 정규식(`/살림/`)으로 조회할 것.
+9. **server.py를 고치고 실제 서버로 검증하는데 새 엔드포인트가 계속 404** → 십중팔구 **예전 서버
+   프로세스가 코드 수정 전 상태로 아직 포트를 붙잡고 있는 것**(uvicorn은 코드 변경 시 자동 리로드
+   안 함, `--reload` 안 쓰는 한). `lsof -i :8000` 또는 `ps aux | grep run_server`로 실제 PID를 확인해
+   확실히 죽이고 나서 재시작할 것. `pkill -f uvicorn` 같은 패턴 매칭은 이 환경에서 가끔 조용히
+   실패하거나 세션을 리셋시키므로, PID를 직접 확인 후 `kill <pid>`로 죽이는 편이 안전하다.
 
 ## 코드를 고친 뒤 검증하는 방법
 
@@ -172,7 +193,8 @@ import uvicorn; uvicorn.run(s.app, host='127.0.0.1', port=8000)
   둘 다 띄워야 함, 아직 원클릭 설치 스크립트 없음).
 - CapCut 드래프트 폴더 기본 경로(`default_capcut_drafts_dir()`)는 추정치. 실제 폴더가 다르면
   9단계의 "CapCut 드래프트 폴더 경로" 고급 설정에 직접 입력하면 된다.
-- 배경음(BGM)은 절차적으로 생성한 화음일 뿐 실제 음원이 아니고, 훅 문구도 템플릿 기반이지 LLM이
-  아니라는 점을 사용자가 재차 물으면 솔직히 답할 것 (README/보고서에도 명시되어 있음).
-- SHOOTING_GUIDE(MODE 2)의 실제 촬영 계획 생성 로직은 아직 없음 (의도된 범위 - 입력 폼과 빈 결과
-  화면만 있음).
+- 배경음(BGM)은 절차적으로 생성한 화음일 뿐 실제 음원이 아니고, 훅 문구/촬영 가이드 둘 다 템플릿
+  기반이지 LLM이 아니라는 점을 사용자가 재차 물으면 솔직히 답할 것 (README/보고서에도 명시되어 있음).
+- SHOOTING_GUIDE(MODE 2)의 촬영 계획 생성 로직은 이제 구현되어 있다(`shooting_guide.py` +
+  `/api/shooting-guide`). 카테고리당 6~8개 앵글 템플릿만 정의돼 있어서, 정의되지 않은 세부 상황에는
+  다소 일반적인 문구가 나올 수 있다는 점은 한계로 남아있음.

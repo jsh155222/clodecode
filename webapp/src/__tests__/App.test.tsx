@@ -1,6 +1,35 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>()
+  return {
+    ...actual,
+    createShootingGuide: vi.fn(async () => ({
+      topic: '원룸 정리 브이로그',
+      category: 'LIVING',
+      categoryLabel: '살림',
+      targetDurationLabel: '1_TO_3MIN',
+      totalEstimatedSeconds: 120,
+      equipmentTips: ['별도 장비가 없어도 괜찮아요.'],
+      warnings: [],
+      shots: [
+        {
+          order: 1,
+          angle: 'WIDE',
+          angleLabel: '와이드샷',
+          title: '문제 상황 소개',
+          description: '이사 후 정리 관련해서 불편했던 상황을 와이드샷으로 보여주며 시작하세요.',
+          estimatedSeconds: 20,
+          tip: null,
+        },
+      ],
+    })),
+  }
+})
+
+// eslint-disable-next-line import/first
 import App from '../App'
 
 beforeEach(() => {
@@ -63,7 +92,7 @@ describe('4. 시작 화면 복귀', () => {
     await user.selectOptions(screen.getByLabelText(/목표 영상 길이/), '1~3분')
 
     await user.click(screen.getByRole('button', { name: '촬영 계획 만들기' }))
-    expect(screen.getByText(/촬영 계획 자동 생성 기능은/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('문제 상황 소개')).toBeInTheDocument())
 
     await user.click(screen.getByRole('button', { name: '처음으로 돌아가기' }))
     expect(screen.getByRole('heading', { name: 'AI 자동 편집' })).toBeInTheDocument()

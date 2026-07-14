@@ -195,3 +195,41 @@ export function startExport(
 export function getExportStatus(id: string): Promise<ExportStatus> {
   return request(`/api/projects/${id}/export`)
 }
+
+export interface ShootingGuideRequest {
+  topic: string
+  category: string
+  productOrSituation: string
+  targetDuration: string
+  location?: string
+  equipment?: string
+  faceOnCamera?: boolean
+  mustShowScenes?: string
+  availableTime?: string
+  notes?: string
+}
+
+export interface ShotPlanDto {
+  order: number
+  angle: string
+  angleLabel: string
+  title: string
+  description: string
+  estimatedSeconds: number
+  tip: string | null
+}
+
+export interface ShootingPlanDto {
+  topic: string
+  category: string
+  categoryLabel: string
+  targetDurationLabel: string
+  totalEstimatedSeconds: number
+  equipmentTips: string[]
+  warnings: string[]
+  shots: ShotPlanDto[]
+}
+
+export function createShootingGuide(body: ShootingGuideRequest): Promise<ShootingPlanDto> {
+  return request('/api/shooting-guide', { method: 'POST', body: JSON.stringify(body) })
+}
