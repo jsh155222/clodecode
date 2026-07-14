@@ -48,9 +48,16 @@ def build_draft(
     subtitle_appearance: Optional[SubtitleAppearance] = None,
     video_track_name: str = "video",
     subtitle_track_name: str = "subtitle",
+    hook_text: Optional[str] = None,
+    hook_duration: float = 2.5,
+    hook_appearance: Optional[SubtitleAppearance] = None,
+    hook_track_name: str = "hook",
 ) -> str:
     """keep_intervals(남길 구간)만 이어붙인 영상 트랙과, 리타이밍된 자막 트랙을 가진
     CapCut 드래프트를 생성하고 저장한다.
+
+    hook_text를 지정하면 영상 맨 앞(0초 ~ hook_duration초)에 별도의 "hook" 텍스트
+    트랙을 추가한다. 자막 트랙과 별개 트랙이므로 자막과 겹쳐도 서로 간섭하지 않는다.
 
     Returns:
         생성된 드래프트 이름.
@@ -67,6 +74,8 @@ def build_draft(
 
     script.add_track(cc.TrackType.video, track_name=video_track_name)
     script.add_track(cc.TrackType.text, track_name=subtitle_track_name)
+    if hook_text:
+        script.add_track(cc.TrackType.text, track_name=hook_track_name)
 
     cursor_us = 0
     for iv in keep_intervals:
@@ -94,6 +103,19 @@ def build_draft(
         text_tr = cc.Timerange(start_us, duration_us)
         text_seg = cc.TextSegment(line.text, text_tr, style=style)
         script.add_segment(text_seg, subtitle_track_name)
+
+    if hook_text:
+        h_appearance = hook_appearance or SubtitleAppearance(size=appearance.size * 1.5, bold=True)
+        hook_style = cc.TextStyle(
+            size=h_appearance.size,
+            color=h_appearance.color,
+            bold=h_appearance.bold,
+            align=h_appearance.align,
+        )
+        hook_duration_us = int(round(hook_duration * SEC))
+        hook_tr = cc.Timerange(0, hook_duration_us)
+        hook_seg = cc.TextSegment(hook_text, hook_tr, style=hook_style)
+        script.add_segment(hook_seg, hook_track_name)
 
     script.save()
     return draft_name

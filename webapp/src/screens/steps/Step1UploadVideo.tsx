@@ -5,22 +5,19 @@ import cardStyles from '../../components/Card.module.css'
 import styles from './Step1UploadVideo.module.css'
 
 interface Step1UploadVideoProps {
-  fileName: string | null
-  onFileSelected: (fileName: string) => void
+  file: File | null
+  onFileSelected: (file: File) => void
   onNext: () => void
 }
 
-/**
- * 1단계: 영상 불러오기.
- * 이번 단계에서는 실제 업로드/처리 로직은 연결하지 않고, 파일 선택 UI만 제공한다.
- */
-export function Step1UploadVideo({ fileName, onFileSelected, onNext }: Step1UploadVideoProps) {
+/** 1단계: 영상 불러오기. 선택한 파일은 2단계 이후 백엔드 업로드에 그대로 사용된다. */
+export function Step1UploadVideo({ file, onFileSelected, onNext }: Step1UploadVideoProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
 
   const handleFiles = (files: FileList | null) => {
-    const file = files?.[0]
-    if (file) onFileSelected(file.name)
+    const selected = files?.[0]
+    if (selected) onFileSelected(selected)
   }
 
   return (
@@ -39,10 +36,10 @@ export function Step1UploadVideo({ fileName, onFileSelected, onNext }: Step1Uplo
           handleFiles(e.dataTransfer.files)
         }}
       >
-        {fileName ? (
+        {file ? (
           <>
             <FileVideo size={32} aria-hidden="true" />
-            <p className={styles.fileName}>{fileName}</p>
+            <p className={styles.fileName}>{file.name}</p>
           </>
         ) : (
           <>
@@ -51,7 +48,7 @@ export function Step1UploadVideo({ fileName, onFileSelected, onNext }: Step1Uplo
           </>
         )}
         <Button variant="secondary" onClick={() => inputRef.current?.click()}>
-          {fileName ? '다른 영상 선택' : '영상 파일 선택'}
+          {file ? '다른 영상 선택' : '영상 파일 선택'}
         </Button>
         <input
           ref={inputRef}
@@ -62,7 +59,7 @@ export function Step1UploadVideo({ fileName, onFileSelected, onNext }: Step1Uplo
           onChange={(e) => handleFiles(e.target.files)}
         />
       </div>
-      <Button onClick={onNext} disabled={!fileName} className={styles.nextButton}>
+      <Button onClick={onNext} disabled={!file} className={styles.nextButton}>
         다음
       </Button>
     </div>

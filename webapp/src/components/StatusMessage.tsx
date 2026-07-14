@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { CheckCircle2, Info, AlertTriangle } from 'lucide-react'
 import styles from './StatusMessage.module.css'
 
 interface StatusMessageProps {
   variant: 'info' | 'success' | 'warning'
-  children: string
+  children: ReactNode
 }
 
 const ICONS = {

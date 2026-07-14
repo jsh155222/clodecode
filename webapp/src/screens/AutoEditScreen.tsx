@@ -1,44 +1,57 @@
 import { useState } from 'react'
 import { StepHeader } from '../components/StepHeader'
+import { StatusMessage } from '../components/StatusMessage'
 import { AUTO_EDIT_STEPS } from '../types'
 import type { AutoEditStepNumber } from '../types'
 import { useProject } from '../state/ProjectContext'
+import { createProject } from '../api/client'
 import { Step1UploadVideo } from './steps/Step1UploadVideo'
 import { Step2SelectCategory } from './steps/Step2SelectCategory'
-import { PlaceholderStep } from './steps/PlaceholderStep'
+import { Step3Analyze } from './steps/Step3Analyze'
+import { Step4CutReview } from './steps/Step4CutReview'
+import { Step5Correction } from './steps/Step5Correction'
+import { Step6SubtitlesHook } from './steps/Step6SubtitlesHook'
+import { Step7Audio } from './steps/Step7Audio'
+import { Step8Confirm } from './steps/Step8Confirm'
+import { Step9Export } from './steps/Step9Export'
+import placeholderStyles from './steps/StepCommon.module.css'
 
 interface AutoEditScreenProps {
   onExitToStart: () => void
 }
 
-const PLACEHOLDER_DESCRIPTIONS: Partial<Record<AutoEditStepNumber, string>> = {
-  3: '무음, 필러워드, 말더듬 구간을 자동으로 찾습니다.',
-  4: '자동으로 찾은 컷 구간을 확인하고 조정합니다.',
-  5: '밝기, 흔들림 등 화면을 자동으로 보정합니다.',
-  6: '자동 생성된 자막과 훅 문구를 확인합니다.',
-  7: '배경음, 효과음, 볼륨을 조정합니다.',
-  8: '편집 결과를 최종 확인합니다.',
-  9: 'CapCut 드래프트로 내보내거나 결과 파일을 저장합니다.',
-}
-
-/** MODE 1(AI 자동 편집)의 9단계 화면 뼈대. 이번 단계에서는 1·2단계 UI만 실제로 동작한다. */
+/** MODE 1(AI 자동 편집)의 9단계. 1~2단계 이후 백엔드에 프로젝트를 생성해 3~9단계를 실제로 처리한다. */
 export function AutoEditScreen({ onExitToStart }: AutoEditScreenProps) {
   const { category, setCategory } = useProject()
   const [step, setStep] = useState<AutoEditStepNumber>(1)
-  const [videoFileName, setVideoFileName] = useState<string | null>(null)
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const stepMeta = AUTO_EDIT_STEPS[step - 1]
 
   const goToStep = (next: number) => {
-    if (next < 1) {
-      onExitToStart()
-      return
-    }
-    if (next > AUTO_EDIT_STEPS.length) {
+    if (next < 1 || next > AUTO_EDIT_STEPS.length) {
       onExitToStart()
       return
     }
     setStep(next as AutoEditStepNumber)
+  }
+
+  const handleCategoryNext = async () => {
+    if (!videoFile || !category) return
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const project = await createProject(videoFile, category)
+      setProjectId(project.id)
+      goToStep(3)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -50,19 +63,37 @@ export function AutoEditScreen({ onExitToStart }: AutoEditScreenProps) {
         onBack={() => goToStep(step - 1)}
       />
       <div style={{ marginTop: 24 }}>
-        {step === 1 ? (
-          <Step1UploadVideo fileName={videoFileName} onFileSelected={setVideoFileName} onNext={() => goToStep(2)} />
-        ) : null}
+        {step === 1 ? <Step1UploadVideo file={videoFile} onFileSelected={setVideoFile} onNext={() => goToStep(2)} /> : null}
+
         {step === 2 ? (
-          <Step2SelectCategory category={category} onChange={setCategory} onNext={() => goToStep(3)} />
+          <div>
+            <Step2SelectCategory category={category} onChange={setCategory} onNext={handleCategoryNext} />
+            {creating ? (
+              <div className={placeholderStyles.body}>
+                <StatusMessage variant="info">프로젝트를 준비하는 중입니다...</StatusMessage>
+              </div>
+            ) : null}
+            {createError ? (
+              <div className={placeholderStyles.body}>
+                <StatusMessage variant="warning">{createError}</StatusMessage>
+              </div>
+            ) : null}
+          </div>
         ) : null}
-        {step >= 3 ? (
-          <PlaceholderStep
-            description={PLACEHOLDER_DESCRIPTIONS[step] ?? ''}
-            primaryLabel={step === AUTO_EDIT_STEPS.length ? '완료하고 처음으로' : '다음'}
-            onPrimary={() => goToStep(step + 1)}
-          />
+
+        {step >= 3 && !projectId ? (
+          <StatusMessage variant="warning">
+            프로젝트가 아직 준비되지 않았어요. 1~2단계를 먼저 완료해주세요.
+          </StatusMessage>
         ) : null}
+
+        {step === 3 && projectId ? <Step3Analyze projectId={projectId} onNext={() => goToStep(4)} /> : null}
+        {step === 4 && projectId ? <Step4CutReview projectId={projectId} onNext={() => goToStep(5)} /> : null}
+        {step === 5 && projectId ? <Step5Correction projectId={projectId} onNext={() => goToStep(6)} /> : null}
+        {step === 6 && projectId ? <Step6SubtitlesHook projectId={projectId} onNext={() => goToStep(7)} /> : null}
+        {step === 7 && projectId ? <Step7Audio projectId={projectId} onNext={() => goToStep(8)} /> : null}
+        {step === 8 && projectId ? <Step8Confirm projectId={projectId} onNext={() => goToStep(9)} /> : null}
+        {step === 9 && projectId ? <Step9Export projectId={projectId} onFinished={onExitToStart} /> : null}
       </div>
     </div>
   )

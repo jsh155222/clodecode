@@ -1,0 +1,60 @@
+.statsRow {
+  margin: 16px 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px var(--card-padding);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  min-height: var(--touch-target-min);
+}
+
+.sourceTag {
+  display: inline-block;
+  font-size: var(--font-label);
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-right: 10px;
+}
+
+.timeRange {
+  font-size: var(--font-label);
+  color: var(--color-text-muted);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-label);
+  min-height: var(--touch-target-min);
+}
+
+.toggle input {
+  width: 22px;
+  height: 22px;
+}
+
+.empty {
+  color: var(--color-text-muted);
+  padding: 16px 0;
+}
+
+.nextButton {
+  width: 100%;
+  margin-top: var(--section-gap-min);
+}

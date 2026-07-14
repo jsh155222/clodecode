@@ -124,3 +124,42 @@ python -m unittest discover -s tests -v
 ```
 
 ffmpeg/faster-whisper 없이도 전체 로직(타임라인 병합, 필러/반복 탐지, 자막 재정렬, CLI 배선)이 검증됩니다.
+
+## 웹앱 (카테고리별 AI 자동 편집 / AI 촬영 가이드)
+
+`webapp/`에 React 기반 웹 UI가 있습니다. 모드 선택(AI 자동 편집 / AI 촬영 가이드) → 카테고리 선택
+(살림/청소/음식/육아/뷰티/여행/캠핑) → 9단계 자동 편집 마법사(영상 불러오기 → 자동 분석 → 컷 검토 →
+화면 보정 → 자막·훅 → 소리 → 최종 확인 → 내보내기) 구조입니다. `capcut_auto/server.py`(FastAPI)가
+백엔드로 위 파이썬 엔진을 REST API로 감쌉니다.
+
+**둘 다 띄워야 합니다** (CLI/GUI와는 별개의 실행 방식):
+
+```bash
+# 1) 백엔드 (터미널 1)
+pip install -r requirements.txt
+uvicorn capcut_auto.server:app --port 8000
+
+# 2) 프론트엔드 (터미널 2)
+cd webapp
+npm install
+npm run dev   # http://localhost:5173 접속
+```
+
+> 프론트엔드를 5173이 아닌 다른 포트로 띄우면 `server.py`의 CORS 설정(`allow_origins`)과 맞지 않아
+> 모든 API 호출이 막힙니다. 포트를 바꿔야 한다면 `capcut_auto/server.py`도 함께 수정하세요.
+
+**현재 정직하게 밝혀둘 한계**:
+- 화면 보정(5단계)은 딥러닝 색보정이 아니라 ffmpeg의 `signalstats`/`eq`/`vidstab` 필터를 쓴
+  고전적 영상처리입니다 (결정론적: 같은 입력엔 항상 같은 보정값).
+- 배경음(7단계)은 실제 음원이 아니라 ffmpeg로 절차적으로 만든 화음 루프 플레이스홀더입니다.
+- 훅 문구(6단계)는 LLM이 아니라 카테고리별 키워드 + 문장 템플릿 조합입니다 (API 키 인프라가
+  아직 없음).
+- MODE 2(AI 촬영 가이드)의 실제 촬영 계획 생성 로직은 아직 없고, 입력 폼과 빈 결과 화면만 있습니다.
+- 프로젝트 상태는 서버 프로세스 메모리에만 있어 서버를 재시작하면 진행 중이던 작업이 사라집니다.
+
+**테스트**:
+
+```bash
+python -m unittest tests.test_server -v   # 백엔드 API (mock 기반, 18개)
+cd webapp && npx vitest run                # 프론트엔드 (30개)
+```

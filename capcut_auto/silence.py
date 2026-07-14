@@ -21,7 +21,7 @@ def _bundled_binary_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "ffmpeg" / "bin"
 
 
-def _require_binary(name: str) -> str:
+def require_binary(name: str) -> str:
     """번들된 ffmpeg/ffprobe가 있으면 그 경로를, 없으면 PATH에 등록된 실행 파일명을 반환한다."""
     exe_name = f"{name}.exe" if platform.system() == "Windows" else name
     bundled = _bundled_binary_dir() / exe_name
@@ -36,7 +36,7 @@ def _require_binary(name: str) -> str:
 
 def get_duration(media_path: str) -> float:
     """ffprobe로 미디어 길이(초)를 조회한다."""
-    ffprobe_bin = _require_binary("ffprobe")
+    ffprobe_bin = require_binary("ffprobe")
     cmd = [
         ffprobe_bin,
         "-v",
@@ -54,7 +54,7 @@ def get_duration(media_path: str) -> float:
 
 def extract_audio(video_path: str, out_path: str, sample_rate: int = 16000) -> str:
     """영상에서 모노 WAV 오디오를 추출한다 (whisper/무음 탐지 입력용)."""
-    ffmpeg_bin = _require_binary("ffmpeg")
+    ffmpeg_bin = require_binary("ffmpeg")
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         ffmpeg_bin,
@@ -82,7 +82,7 @@ def detect_silence(
         noise_db: 이 값(dB)보다 조용하면 무음으로 간주 (예: -30dB).
         min_silence_duration: 이 시간(초) 이상 지속되어야 무음 구간으로 인정.
     """
-    ffmpeg_bin = _require_binary("ffmpeg")
+    ffmpeg_bin = require_binary("ffmpeg")
     cmd = [
         ffmpeg_bin,
         "-i",

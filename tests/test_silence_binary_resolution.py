@@ -1,4 +1,4 @@
-"""번들된 ffmpeg/ffprobe 탐지 로직(_require_binary) 검증. 실제 ffmpeg는 필요 없음."""
+"""번들된 ffmpeg/ffprobe 탐지 로직(require_binary) 검증. 실제 ffmpeg는 필요 없음."""
 
 import tempfile
 import unittest
@@ -18,7 +18,7 @@ class TestRequireBinary(unittest.TestCase):
 
             with mock.patch.object(silence, "_bundled_binary_dir", return_value=bundled_dir), \
                  mock.patch.object(silence.platform, "system", return_value="Windows"):
-                resolved = silence._require_binary("ffmpeg")
+                resolved = silence.require_binary("ffmpeg")
 
             self.assertEqual(resolved, str(fake_exe))
 
@@ -28,7 +28,7 @@ class TestRequireBinary(unittest.TestCase):
 
             with mock.patch.object(silence, "_bundled_binary_dir", return_value=bundled_dir), \
                  mock.patch.object(silence.shutil, "which", return_value="/usr/bin/ffmpeg"):
-                resolved = silence._require_binary("ffmpeg")
+                resolved = silence.require_binary("ffmpeg")
 
             self.assertEqual(resolved, "ffmpeg")
 
@@ -39,7 +39,7 @@ class TestRequireBinary(unittest.TestCase):
             with mock.patch.object(silence, "_bundled_binary_dir", return_value=bundled_dir), \
                  mock.patch.object(silence.shutil, "which", return_value=None):
                 with self.assertRaises(RuntimeError):
-                    silence._require_binary("ffmpeg")
+                    silence.require_binary("ffmpeg")
 
 
 if __name__ == "__main__":

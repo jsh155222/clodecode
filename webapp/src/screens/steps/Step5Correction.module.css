@@ -1,0 +1,13 @@
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch-target-min);
+  margin: 16px 0;
+  font-size: var(--font-body);
+}
+
+.checkboxRow input {
+  width: 22px;
+  height: 22px;
+}

@@ -1,0 +1,57 @@
+.sectionTitle {
+  font-size: var(--font-title);
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+.moodList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: var(--section-gap-min);
+}
+
+.moodOption {
+  min-height: var(--touch-target-min);
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--font-body);
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.moodSelected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.sliderRow {
+  display: block;
+  font-size: var(--font-body);
+  margin-bottom: var(--section-gap-min);
+}
+
+.sliderRow input {
+  display: block;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  margin-top: 8px;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch-target-min);
+  margin-bottom: var(--section-gap-min);
+  font-size: var(--font-body);
+}
+
+.checkboxRow input {
+  width: 22px;
+  height: 22px;
+}
