@@ -13,9 +13,10 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Sequence
+from typing import Dict, Optional, Sequence
 
 from .silence import require_binary
+from .timeline import Interval
 
 # 무드별 코드(주파수 Hz) - categories.py의 default_bgm_mood 값과 대응한다.
 MOOD_CHORDS: Dict[str, list] = {
@@ -104,13 +105,39 @@ def ensure_sfx_library(dir_path: str) -> Dict[str, str]:
     return {"pop": pop_path}
 
 
-def mix_bgm(video_path: str, bgm_path: str, output_path: str, bgm_volume: float = 0.18, original_volume: float = 1.0) -> str:
-    """원본 오디오에 배경음을 합성한다. 배경음은 영상 길이에 맞춰 반복(loop)된다."""
+def _bgm_volume_expression(bgm_volume: float, voice_intervals: Sequence[Interval], duck_volume_ratio: float) -> str:
+    """발화 구간에서는 배경음을 duck_volume_ratio만큼 줄이는 ffmpeg volume 표현식을 만든다.
+
+    between(t,start,end)는 구간 안이면 1, 아니면 0을 반환한다. 여러 구간의 합이 0보다 크면
+    (=하나 이상의 발화 구간 안이면) ducked 볼륨을, 아니면 기본 볼륨을 쓴다.
+    """
+    duck_volume = bgm_volume * duck_volume_ratio
+    if not voice_intervals:
+        return f"volume={bgm_volume}"
+    between_terms = "+".join(f"between(t,{iv.start},{iv.end})" for iv in voice_intervals)
+    return f"volume=eval=frame:volume='if(gt({between_terms},0),{duck_volume},{bgm_volume})'"
+
+
+def mix_bgm(
+    video_path: str,
+    bgm_path: str,
+    output_path: str,
+    bgm_volume: float = 0.18,
+    original_volume: float = 1.0,
+    voice_intervals: Optional[Sequence[Interval]] = None,
+    duck_volume_ratio: float = 0.35,
+) -> str:
+    """원본 오디오에 배경음을 합성한다. 배경음은 영상 길이에 맞춰 반복(loop)된다.
+
+    voice_intervals를 넘기면 발화 구간에서 배경음 볼륨을 duck_volume_ratio만큼 자동으로
+    줄인다("음성 중 자동 볼륨 감소"). 넘기지 않으면 기존과 동일한 고정 볼륨으로 믹싱한다.
+    """
     ffmpeg_bin = require_binary("ffmpeg")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    bgm_volume_expr = _bgm_volume_expression(bgm_volume, voice_intervals or [], duck_volume_ratio)
     filter_complex = (
         f"[0:a]volume={original_volume}[a0];"
-        f"[1:a]aloop=loop=-1:size=2e9,volume={bgm_volume}[a1];"
+        f"[1:a]aloop=loop=-1:size=2e9,{bgm_volume_expr}[a1];"
         f"[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]"
     )
     cmd = [

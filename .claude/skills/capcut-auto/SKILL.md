@@ -50,7 +50,20 @@ capcut_auto/
   ai/                     AI 기반 자동 편집 핵심 기능 (아래 "capcut_auto/ai/" 절 참고).
                           기존 규칙 기반 파이프라인과 독립적으로 추가된 레이어 - server.py의
                           3/4/6단계는 아직 이 패키지를 쓰지 않음(연결은 다음 단계)
-tests/                    221개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
+  visual/                 대표 프레임 추출/피사체 감지/9:16 리프레이밍/자막 안전 영역
+                          (아래 "capcut_auto/visual/" 절 참고). server.py/webapp에는 아직 미연결
+  sfx_recommend.py         장면에 맞는 효과음 추천 - 목적 분류 → 내부 에셋(ffmpeg 절차 생성) 검색 →
+                          실제 오디오 충돌(빈도/음성/보호구간/연속반복) 확인 → 최대 3개 후보 →
+                          apply_approved_sfx()로 승인된 것만 적용. server.py/webapp 미연결
+  bgm_recommend.py          BGM 추천 - 무드/템포범위/에너지/보컬유무/검색키워드/음성중 자동
+                          덕킹 규칙만 추천. 곡 제목/아티스트/저작권/트렌드 여부는 절대 만들지
+                          않음(FORBIDDEN_FIELD_NAMES로 하드 가드). server.py/webapp 미연결
+  shooting_guide_v2.py     MODE 2 확장 - 새 ShootingGuideInput 스키마(topic/category/subject/
+                          targetDurationSeconds/...), 길이 기반 컷개수 규칙, 역할별
+                          카메라 5요소+자막안전영역+필수여부, 체크리스트+진행률.
+                          기존 shooting_guide.py(v1, server.py에 연결됨)는 그대로 두고 별도
+                          모듈로 추가함 - server.py/webapp 미연결
+tests/                    371개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
                           test_*_integration.py는 실제 ffmpeg 있을 때만 돌아감(skipUnless).
                           ai_test_helpers.py는 진짜 네트워크 호출 없이 client.py를 검증하는
                           가짜(fake) Anthropic 클라이언트 - 모든 tests/test_ai_*.py가 공유함
@@ -185,6 +198,100 @@ category-rules/
 미혼입)을 각각 커버한다. "다른 카테고리가 섞이지 않는지"는 전체 카테고리 쌍의 protectedMoments가
 서로 다른지, 한 카테고리를 로드해도 다른 카테고리 로드 결과가 안 바뀌는지, 같은 프로세스에서
 연속으로 다른 카테고리를 호출해도 페이로드가 안 섞이는지까지 실제로 확인한다.
+
+## capcut_auto/visual/ - 대표 프레임/피사체/9:16/자막 안전 영역 (Phase 4)
+
+```
+visual/
+  frame_extraction.py     장면전환(ffmpeg select=gt(scene,threshold)+showinfo 실제 파싱)/
+                          모션변화/문장시작/의미 기반(결과공개·비포애프터, VideoSection 역할
+                          전이로 판단) 트리거를 merge_and_space_trigger_times()로 합쳐 min_gap~
+                          max_gap 간격으로 스페이싱한 뒤 extract_representative_frames()가
+                          실제 ffmpeg로 JPG 프레임을 뽑는다. 영상 전체를 AI에 보내지 않기 위한
+                          전처리 단계 - 기본 간격 0.5~1초
+  subject_detection.py     실제 OpenCV Haar Cascade(오프라인, opencv-python-headless==4.10.0.84
+                          로 버전 고정 - 최신 5.0.0은 cascade 데이터가 비어 있어 못 씀)로 얼굴만
+                          실제 검출. UNSUPPORTED_WITHOUT_REAL_MODEL(hand/product/tool/food/
+                          child/beauty_area/travel_location/camping_equipment/work_area/
+                          problem_area/text)은 진짜 검출기가 없으므로 **절대 좌표를 지어내지
+                          않고 항상 빈 리스트를 반환** - "Claude가 텍스트만으로 객체 좌표를
+                          생성하지 않는다" 요구사항을 LLM 호출 코드와 아예 분리하는 방식으로
+                          충족(이 모듈은 ai/ 패키지를 import하지 않음). is_confident()가
+                          bbox 없음/confidence 낮음을 걸러내 "좌표 신뢰도가 낮으면 자동 크롭
+                          안 함"을 강제
+  reframe.py                compute_crop_window()(피사체 bbox+여백이 9:16 안에 들어오도록
+                          zoom 계산, max_zoom 기본 1.35·해상도 낮으면 zoom_limit_for_resolution()
+                          으로 더 낮춤, 못 담으면 subject_fully_contained=False로 정직하게 표시),
+                          smooth_crop_path()(중심 이동/줌 변화를 프레임당 최대치로 클램프해
+                          급격한 크롭 점프 방지 - 결정론적 클램프 방식이며 ML 트래커는 아님,
+                          범위를 벗어나는 설계 결정으로 문서화), align_before_after_crop()
+                          (비포/애프터는 같은 구도 재사용), apply_approved_reframe()
+                          (approved=True인 계획만 통과 - "모든 화면 보정은 사용자 검토 후 적용")
+  subtitle_safe_zone.py     compute_subtitle_safe_zone() - 하단 밴드를 기본으로 쓰고, 신뢰도
+                          높은 피사체가 겹치면 상단으로 이동, 양쪽 다 겹치면 overlaps_subject=True
+                          로 정직하게 플래그(조용히 무시하지 않음)
+```
+
+## sfx_recommend.py - 장면에 맞는 효과음 추천 (Phase 4)
+
+사용자가 전문 효과음 이름을 직접 고르지 않는다. `classify_scene_purpose()`가 `VideoSection.role`
+(이미 분석된 실제 데이터)만으로 목적(RESULT_REVEAL/TRANSITION/EMPHASIS/SUCCESS/BUILD_UP)을
+정하고(매핑 안 되는 역할은 None - 지어내지 않음), `ensure_sfx_asset_library()`가 목적별로
+2~3개 톤 시퀀스를 실제 ffmpeg로 생성(라이선스 음원 없어서 `audio_mix.py`와 같은 방식의
+플레이스홀더). `recommend_sfx_for_scenes()`가 장면마다 신뢰도(<0.5면 스킵)→자연음 보호
+카테고리면 BUILD_UP 배제→보호구간/음성 겹침→10초당 최대 2개 빈도 제한→연속 동일 효과음
+금지 순으로 걸러 최대 3개 후보를 만든다. `apply_approved_sfx()`는 `approved=True`이고
+`selected_asset_id`가 있는 추천만 실제 배치로 확정한다. `_CATEGORY_PURPOSE_RESTRICTIONS`에
+육아만 명시적으로 제한(과도한 충격음 방지) - 스펙에 없는 카테고리 제한은 지어내지 않음.
+
+## bgm_recommend.py - BGM 추천 (Phase 4)
+
+`recommend_bgm_metadata()`는 카테고리 기본 무드(`categories.py`의 `default_bgm_mood`)로
+무드/템포범위(BPM)/에너지(LOW/MEDIUM/HIGH)/보컬유무(항상 False - 내레이션과 안 겹치게)/
+검색 키워드/음성 중 자동 덕킹 규칙만 담은 `BgmMetadataRecommendation`을 반환한다.
+`preserve_natural_audio`가 true인 카테고리는 에너지를 LOW로 강제 제한하고 덕킹을 더 세게
+건다. **곡 제목/아티스트/저작권 상태/트렌드 여부 필드가 데이터클래스에 아예 없다** -
+`FORBIDDEN_FIELD_NAMES`와 `assert_no_forbidden_fields()`로 이 불변조건을 테스트에서도
+직접 검증한다(실수로 이런 필드가 나중에 추가돼도 테스트가 바로 잡아냄).
+
+`audio_mix.mix_bgm()`도 이 단계에서 확장함: `voice_intervals`를 넘기면 ffmpeg
+`volume=eval=frame:volume='if(gt(between(t,s1,e1)+...,0),duck,normal)'` 표현식으로 발화
+구간에서만 실제로 볼륨을 낮춘다("음성 중 자동 볼륨 감소"). 안 넘기면 기존과 100% 동일한
+고정 볼륨 믹싱이라 기존 호출부는 전혀 안 바뀌어도 됨.
+
+## shooting_guide_v2.py - MODE 2 확장 (Phase 4)
+
+기존 `shooting_guide.py`(v1, `/api/shooting-guide`에 연결됨, `product_or_situation`/
+`target_duration`(문자열 버킷)/`face_on_camera`/`must_show_scenes`(자유 텍스트) 필드)는
+그대로 두고, 사용자가 준 새 `ShootingGuideInput` TS 인터페이스(topic/category/subject/
+location?/equipment?: string[]/targetDurationSeconds/showFace?/availableShootingMinutes?/
+mustShowSteps?: string[]/additionalNotes?)를 그대로 반영한 **별도 모듈**로 추가했다(필드
+모양이 달라 기존 모듈을 고치면 서버/웹앱에 이미 연결된 v1이 깨지므로).
+
+- `cut_count_range_for_duration(seconds)`: 15~30초→6~12컷, 30~60초→8~18컷(스펙에 명시된
+  정확한 값). 그 밖의 길이는 가장 가까운 구간의 컷 밀도를 연장한 추정치이며 그렇게
+  문서화되어 있음(스펙에 없는 값을 정확한 규칙인 척하지 않음).
+- 매 샷마다 역할(HOOK/OVERVIEW/SUBJECT_DETAIL/PROCESS/CHANGE/RESULT = 초반 훅/전체 상황/
+  핵심 대상 디테일/실제 과정/핵심 변화/결과), 카메라 5요소(angle/distance/height/direction/
+  movement), 촬영 권장 시간(최종 컷 길이가 아니라 역할별 리테이크 배수를 곱한 "여유 있게
+  찍어둘 시간"), 자막 안전 영역 힌트, 필수 촬영 여부(mandatory)를 담은 `ShotSpecV2`를 만든다.
+- `mustShowSteps`는 마지막 샷(보통 RESULT) 앞에 강제 삽입되고 항상 mandatory=True. 너무
+  많아서 권장 컷 수 범위를 넘으면 조용히 자르지 않고 경고를 추가한다.
+- `build_shooting_checklist()`/`mark_checklist_item_done()`/`shooting_progress()`로
+  체크리스트 + 진행률(전체/필수 항목 각각) 추적.
+- **`MODE1_INDEPENDENCE_NOTICE`가 모든 계획의 warnings에 항상 포함됨**: "촬영 계획에 있던
+  장면이 실제 영상에 존재한다고 가정하지 않는다"를 코드로 강제하기 위해, 이 모듈은
+  `ai/video_structure.py` 등 MODE 1 분석 함수를 아예 import/호출하지 않는다(아키텍처로
+  분리) - MODE 1은 이 계획과 완전히 무관하게 업로드된 영상을 처음부터 다시 분석한다.
+
+## tests/test_final_integration.py - 최종 통합 검사 (Phase 4, 20개 시나리오)
+
+7개 카테고리 각각 + 카테고리 전환 + 컷 편집 + 자막 + 훅 + 9:16 크롭 + 자연음 보호 + 효과음
+추천 + BGM 추천 + 촬영 가이드 + 실행취소(undo) + 원상복구(revert) + 내보내기(export, 실제
+ffmpeg+pycapcut) + 기존 기능 회귀까지 25개 테스트로 커버한다. 개별 모듈 세부 동작은 각
+전용 테스트 파일이 담당하고, 이 파일은 **모듈 간 실제 연동**(하나의 파이프라인으로 이어
+붙였을 때도 맞물리는지)에 집중한다. `EditHistory.revert_to_original()`이 "원상복구" 구현체이며
+undo/redo와 같은 클래스에 있다 - 별도 API 엔드포인트는 없음(server.py에는 아직 미연결).
 
 ## MODE 1 ↔ MODE 2 인계 (촬영 계획 → 자동 편집)
 
@@ -337,7 +444,8 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 
 ```bash
 # 1. 파이썬 순수 로직 전체 (항상 통과해야 함, ffmpeg/whisper/pycapcut 불필요)
-python3 -m unittest discover -s tests -v   # 221개
+python3 -m unittest discover -s tests -v   # 371개 (opencv-python-headless==4.10.0.84 필요 -
+                                            # visual/subject_detection.py용, 5.0.0은 cascade 데이터 없음)
 
 # 2. .bat 파일을 건드렸다면 CRLF/괄호 이스케이프 재확인 (위 1, 2번 참고)
 
@@ -377,3 +485,12 @@ import uvicorn; uvicorn.run(s.app, host='127.0.0.1', port=8000)
 - SHOOTING_GUIDE(MODE 2)의 촬영 계획 생성 로직은 이제 구현되어 있다(`shooting_guide.py` +
   `/api/shooting-guide`). 카테고리당 6~8개 앵글 템플릿만 정의돼 있어서, 정의되지 않은 세부 상황에는
   다소 일반적인 문구가 나올 수 있다는 점은 한계로 남아있음.
+- **Phase 4(`visual/`, `sfx_recommend.py`, `bgm_recommend.py`, `shooting_guide_v2.py`)는 전부 순수
+  엔진+테스트 단계다 - `server.py` REST 엔드포인트나 webapp UI에 아직 연결되지 않았다** (`ai/`
+  패키지와 같은 상태). 사용자가 "9:16 크롭이 실제로 화면에 보이나요?" 등을 물으면, 계산/검증 로직은
+  전부 실제로 동작하고 테스트도 통과하지만, 지금은 웹앱 화면에서 그 결과를 볼 수 있는 UI/API가 아직
+  없다고 정직하게 답할 것. 다음 단계에서 연결 작업이 필요하다.
+- `subject_detection.py`는 얼굴만 실제 검출하고 나머지 카테고리(hand/product/tool/...)는 항상
+  빈 리스트를 반환한다 - 검출기 자체가 없어서 지어내지 않기로 한 설계다. 실사용에 쓰려면 실제
+  객체 검출 모델(YOLO 등)을 연결해야 하며, 그 전까지는 얼굴 기반 리프레이밍/자막 안전 영역만
+  실질적으로 동작한다.

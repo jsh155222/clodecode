@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from capcut_auto.audio_mix import apply_sfx_at_cuts, ensure_bgm_library, ensure_sfx_library, mix_bgm
+from capcut_auto.timeline import Interval
 
 FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
 
@@ -65,6 +66,25 @@ class TestAudioMixIntegration(unittest.TestCase):
 
             out_path = str(Path(tmp) / "mixed.mp4")
             mix_bgm(video_path, library["warm"].path, out_path, bgm_volume=0.2)
+
+            self.assertTrue(Path(out_path).exists())
+            self.assertGreater(Path(out_path).stat().st_size, 0)
+
+    def test_mix_bgm_with_voice_intervals_produces_ducked_video(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "in.mp4")
+            _make_video_with_tone(video_path)
+            library = ensure_bgm_library(str(Path(tmp) / "bgm"))
+
+            out_path = str(Path(tmp) / "ducked.mp4")
+            mix_bgm(
+                video_path,
+                library["warm"].path,
+                out_path,
+                bgm_volume=0.2,
+                voice_intervals=[Interval(1.0, 2.5)],
+                duck_volume_ratio=0.3,
+            )
 
             self.assertTrue(Path(out_path).exists())
             self.assertGreater(Path(out_path).stat().st_size, 0)

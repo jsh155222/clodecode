@@ -5,3 +5,5 @@ uvicorn>=0.29.0
 python-multipart>=0.0.9
 anthropic>=0.68.0
 jsonschema>=4.20.0
+opencv-python-headless==4.10.0.84
+numpy>=1.21.2

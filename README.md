@@ -221,3 +221,54 @@ python -m unittest tests.test_ai_client tests.test_ai_cut_candidates \
 ```bash
 python -m unittest tests.test_category_rules -v   # 33개
 ```
+
+## 대표 프레임/피사체/9:16/효과음/BGM/촬영 가이드 확장 (Phase 4, 진행 중)
+
+10개 신규 기능을 순수 엔진 + 테스트로 추가했습니다. `capcut_auto/ai/`와 마찬가지로 **아직
+`server.py` REST 엔드포인트나 웹앱 UI에 연결되지 않았습니다.**
+
+- **대표 프레임 추출**(`capcut_auto/visual/frame_extraction.py`): 영상 전체를 AI에 보내지
+  않기 위해, 실제 ffmpeg 장면전환 감지(`select=gt(scene,threshold)`)/모션 변화/문장 시작/
+  의미 기반(결과 공개, 비포·애프터) 트리거를 합쳐 0.5~1초 간격으로 JPG 프레임만 뽑습니다.
+- **피사체 감지**(`capcut_auto/visual/subject_detection.py`): 실제 OpenCV Haar Cascade로
+  얼굴만 실제 검출합니다. hand/product/tool 등 나머지 카테고리는 실제 검출기가 없어
+  **좌표를 절대 지어내지 않고 항상 빈 리스트를 반환**합니다 - LLM이 텍스트만으로 좌표를
+  만들지 못하게 이 모듈은 `ai/` 패키지를 아예 import하지 않습니다. 좌표 신뢰도가 낮으면
+  자동 크롭하지 않습니다.
+- **구도 분석 / 9:16 자동 리프레이밍 / 자연스러운 줌**(`capcut_auto/visual/reframe.py`):
+  피사체가 잘리지 않게 크롭·줌(기본 최대 1.35배, 저해상도는 더 낮춤)을 계산하고, 급격한
+  크롭 점프를 막기 위해 프레임 간 이동/줌 변화를 클램프합니다. **모든 화면 보정은 사용자
+  검토(`approved=True`) 후에만 적용**됩니다.
+- **자막 안전 영역**(`capcut_auto/visual/subtitle_safe_zone.py`): 하단을 기본으로 쓰고
+  신뢰도 높은 피사체와 겹치면 상단으로 옮기며, 양쪽 다 막히면 조용히 무시하지 않고
+  플래그로 알립니다.
+- **효과음 추천**(`capcut_auto/sfx_recommend.py`): 사용자가 전문 효과음 이름을 직접 고르지
+  않습니다. 장면 역할(HOOK/RESULT/...)로 목적을 분류하고, 실제 오디오 충돌(10초당 최대
+  2개, 음성/자연음 보호구간과 안 겹침, 연속 반복 금지)을 확인해 최대 3개 후보만 추천하며,
+  사용자가 승인한 것만 타임라인에 적용됩니다.
+- **BGM 추천**(`capcut_auto/bgm_recommend.py`): 무드/템포범위/에너지/보컬유무/검색
+  키워드/음성 중 자동 볼륨 감소 규칙만 추천합니다. **곡 제목·아티스트·저작권 상태·트렌드
+  여부는 절대 만들어내지 않습니다**(데이터클래스에 그런 필드 자체가 없고, 테스트가 이를
+  직접 검증합니다). `audio_mix.mix_bgm()`도 발화 구간에서 실제로 볼륨을 낮추는 덕킹
+  기능이 추가되었습니다(기존 호출부는 그대로 동작).
+- **MODE 2 촬영 가이드 확장**(`capcut_auto/shooting_guide_v2.py`): 기존 `shooting_guide.py`
+  (v1, 서버에 연결됨)는 그대로 두고, 새 입력 스키마(topic/category/subject/
+  targetDurationSeconds/...)를 반영한 별도 모듈을 추가했습니다. 길이 기반 컷 개수 규칙
+  (15~30초 6~12컷, 30~60초 8~18컷), 역할별 카메라 5요소, 촬영 체크리스트+진행률을
+  제공하며, **촬영 계획에 있는 장면이 실제 업로드 영상에 있다고 가정하지 않습니다**
+  (MODE 1은 이 계획과 무관하게 업로드 영상을 처음부터 다시 분석합니다).
+
+**정직하게 밝혀둘 한계**:
+- 위 기능 전부 아직 웹앱 화면/REST API에 연결되지 않은 엔진+테스트 단계입니다.
+- 피사체 감지는 얼굴만 실제로 되고, 손/제품/도구 등은 실제 객체 검출 모델(YOLO 등)을
+  연결하기 전까지 항상 빈 결과를 반환합니다.
+- 9:16 리프레이밍의 크롭 경로 스무딩은 결정론적 클램프 방식이며 실제 ML 트래커는
+  아닙니다(문서화된 범위 결정).
+- 효과음/BGM 모두 `audio_mix.py`와 같은 방식으로 ffmpeg 절차 생성 플레이스홀더이며
+  실제 라이선스 음원이 아닙니다.
+
+```bash
+python -m unittest tests.test_visual_frame_extraction tests.test_visual_subject_detection \
+  tests.test_visual_reframe tests.test_visual_subtitle_safe_zone tests.test_sfx_recommend \
+  tests.test_bgm_recommend tests.test_shooting_guide_v2 tests.test_final_integration -v   # 146개
+```
