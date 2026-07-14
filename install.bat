@@ -5,8 +5,8 @@ cd /d "%~dp0"
 
 echo ============================================
 echo  CapCut 자동 컷/자막 편집기 - 설치
-echo  (처음 한 번만 실행하면 됩니다. 다소 시간이
-echo   걸릴 수 있습니다 - 인터넷 상태에 따라 다름)
+echo  처음 한 번만 실행하면 됩니다. 다소 시간이
+echo  걸릴 수 있습니다 - 인터넷 상태에 따라 다름
 echo ============================================
 echo.
 
@@ -45,7 +45,7 @@ if not exist ".venv" (
 )
 call ".venv\Scripts\activate.bat"
 
-echo       필요한 패키지 설치 중 (faster-whisper 등, 용량이 커서 몇 분 걸릴 수 있습니다)...
+echo       필요한 패키지 설치 중 - faster-whisper 등, 용량이 커서 몇 분 걸릴 수 있습니다...
 python -m pip install --upgrade pip >nul
 pip install -r requirements.txt
 if %errorlevel% neq 0 (
