@@ -1,0 +1,42 @@
+.card {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--card-padding);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-text);
+}
+
+.card.selected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: var(--font-body);
+  font-weight: 600;
+  flex: 1;
+}
+
+.selectedBadge {
+  font-size: var(--font-label);
+  color: var(--color-primary);
+  font-weight: 700;
+}

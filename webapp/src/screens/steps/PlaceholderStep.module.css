@@ -1,0 +1,8 @@
+.body {
+  margin-top: 20px;
+  margin-bottom: var(--section-gap-min);
+}
+
+.nextButton {
+  width: 100%;
+}

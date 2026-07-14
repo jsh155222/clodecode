@@ -1,0 +1,48 @@
+/*
+  디자인 토큰: UI 원칙에 명시된 수치를 코드 한 곳에서 관리한다.
+  - 모바일 터치 영역 최소 44x44px
+  - 주요 버튼 높이 최소 48px
+  - 본문 글자 15~17px, 화면 제목 22~28px
+  - 카드 내부 여백 최소 16px, 섹션 간격 최소 24px
+*/
+:root {
+  --touch-target-min: 44px;
+  --button-height-min: 48px;
+
+  --font-body: clamp(15px, 1.2vw + 0.6rem, 17px);
+  --font-title: clamp(22px, 2.4vw + 1rem, 28px);
+  --font-label: clamp(13px, 1vw + 0.5rem, 15px);
+
+  --card-padding: 20px;
+  --card-padding-min: 16px;
+  --section-gap: 28px;
+  --section-gap-min: 24px;
+
+  --color-bg: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-border: #e2e2e6;
+  --color-text: #1a1a1f;
+  --color-text-muted: #64646d;
+  --color-primary: #2f6fed;
+  --color-primary-text: #ffffff;
+  --color-success: #1f9d55;
+  --color-warning: #b45309;
+  --color-danger: #dc2626;
+  --color-focus-ring: #2f6fed;
+
+  --radius-card: 16px;
+  --radius-control: 12px;
+
+  --breakpoint-mobile-max: 599px;
+  --breakpoint-tablet-max: 1023px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #121214;
+    --color-surface: #1c1c20;
+    --color-border: #303036;
+    --color-text: #f2f2f4;
+    --color-text-muted: #a3a3ad;
+  }
+}

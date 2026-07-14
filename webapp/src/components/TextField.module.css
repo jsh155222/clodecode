@@ -1,0 +1,44 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.label {
+  font-size: var(--font-label);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.requiredMark {
+  color: var(--color-danger);
+}
+
+.optionalMark {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.input,
+.textarea {
+  min-height: var(--touch-target-min);
+  padding: 10px 14px;
+  font-size: var(--font-body);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.helpText {
+  margin: 0;
+  font-size: var(--font-label);
+  color: var(--color-text-muted);
+}
