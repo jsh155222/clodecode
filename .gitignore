@@ -9,3 +9,6 @@ build/
 dist/
 .venv/
 venv/
+ffmpeg/
+ffmpeg_temp.zip
+ffmpeg_extract/

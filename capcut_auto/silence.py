@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import re
 import shutil
 import subprocess
@@ -15,18 +16,29 @@ _SILENCE_START_RE = re.compile(r"silence_start:\s*(-?[0-9.]+)")
 _SILENCE_END_RE = re.compile(r"silence_end:\s*(-?[0-9.]+)")
 
 
-def _require_binary(name: str) -> None:
+def _bundled_binary_dir() -> Path:
+    """install.bat이 내려받아 놓는 ffmpeg 번들 위치 (<repo_root>/ffmpeg/bin)."""
+    return Path(__file__).resolve().parent.parent / "ffmpeg" / "bin"
+
+
+def _require_binary(name: str) -> str:
+    """번들된 ffmpeg/ffprobe가 있으면 그 경로를, 없으면 PATH에 등록된 실행 파일명을 반환한다."""
+    exe_name = f"{name}.exe" if platform.system() == "Windows" else name
+    bundled = _bundled_binary_dir() / exe_name
+    if bundled.exists():
+        return str(bundled)
     if shutil.which(name) is None:
         raise RuntimeError(
-            f"'{name}' 실행 파일을 찾을 수 없습니다. ffmpeg/ffprobe를 설치한 뒤 다시 시도하세요."
+            f"'{name}' 실행 파일을 찾을 수 없습니다. install.bat을 실행하거나 ffmpeg를 설치한 뒤 다시 시도하세요."
         )
+    return name
 
 
 def get_duration(media_path: str) -> float:
     """ffprobe로 미디어 길이(초)를 조회한다."""
-    _require_binary("ffprobe")
+    ffprobe_bin = _require_binary("ffprobe")
     cmd = [
-        "ffprobe",
+        ffprobe_bin,
         "-v",
         "error",
         "-show_entries",
@@ -42,10 +54,10 @@ def get_duration(media_path: str) -> float:
 
 def extract_audio(video_path: str, out_path: str, sample_rate: int = 16000) -> str:
     """영상에서 모노 WAV 오디오를 추출한다 (whisper/무음 탐지 입력용)."""
-    _require_binary("ffmpeg")
+    ffmpeg_bin = _require_binary("ffmpeg")
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg",
+        ffmpeg_bin,
         "-y",
         "-i",
         str(video_path),
@@ -70,9 +82,9 @@ def detect_silence(
         noise_db: 이 값(dB)보다 조용하면 무음으로 간주 (예: -30dB).
         min_silence_duration: 이 시간(초) 이상 지속되어야 무음 구간으로 인정.
     """
-    _require_binary("ffmpeg")
+    ffmpeg_bin = _require_binary("ffmpeg")
     cmd = [
-        "ffmpeg",
+        ffmpeg_bin,
         "-i",
         str(audio_path),
         "-af",
