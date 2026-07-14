@@ -6,3 +6,19 @@
 .nextButton {
   width: 100%;
 }
+
+.hint {
+  margin: 0 0 8px;
+  color: var(--color-text-muted, #666);
+  font-size: 0.9rem;
+}
+
+.shootingPlanList {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+}

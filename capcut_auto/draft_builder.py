@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
+import uuid
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
@@ -118,4 +120,36 @@ def build_draft(
         script.add_segment(hook_seg, hook_track_name)
 
     script.save()
+    _fix_draft_ids(capcut_drafts_dir, draft_name)
     return draft_name
+
+
+def _fix_draft_ids(capcut_drafts_dir: str, draft_name: str) -> None:
+    """pycapcut 0.0.3은 draft_content.json의 최상위 `id`와 draft_meta_info.json의
+    `draft_id`를 매번 동일한 번들 템플릿 값으로 남겨둔다 (`DraftFolder.create_draft`가
+    `draft_meta_info.json`을 그대로 복사만 하고, `ScriptFile.dumps()`도 `id`를 갱신하지
+    않기 때문 - 실제 설치된 pycapcut 0.0.3 소스로 확인함). 이 프로젝트처럼 같은 CapCut
+    드래프트 폴더에 여러 드래프트를 반복 생성하면 모든 드래프트가 동일한 id를 갖게 되어,
+    CapCut이 내부적으로 id를 키로 쓰는 경우(썸네일/최근 항목 캐시 등) 서로 덮어쓸 위험이
+    있다. 여기서 매 드래프트마다 새 UUID를 부여하고, 메타 정보의 이름/길이도 실제 값으로
+    채워 최소한의 구조적 정합성을 맞춘다.
+    """
+    draft_dir = os.path.join(capcut_drafts_dir, draft_name)
+    content_path = os.path.join(draft_dir, "draft_content.json")
+    meta_path = os.path.join(draft_dir, "draft_meta_info.json")
+
+    with open(content_path, "r", encoding="utf-8") as f:
+        content = json.load(f)
+    content_id = str(uuid.uuid4()).upper()
+    content["id"] = content_id
+    duration_us = content.get("duration", 0)
+    with open(content_path, "w", encoding="utf-8") as f:
+        json.dump(content, f, ensure_ascii=False, indent=4)
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    meta["draft_id"] = str(uuid.uuid4()).upper()
+    meta["draft_name"] = draft_name
+    meta["tm_duration"] = duration_us
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=4)

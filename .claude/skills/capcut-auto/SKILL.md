@@ -45,7 +45,7 @@ capcut_auto/
                           (server.py는 이걸 쓰지 않고 각 단계를 개별 호출 - 사용자가 단계 사이에
                           검토/수정할 수 있어야 하기 때문)
   cli.py / gui.py         기존 CLI/Tkinter GUI, run_pipeline() 기반, 그대로 유지됨
-tests/                    91개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
+tests/                    115개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
                           test_*_integration.py는 실제 ffmpeg 있을 때만 돌아감(skipUnless)
 install.bat / run.bat     Windows 원클릭 설치/실행 (CLI/GUI용, 웹앱과는 별개)
 
@@ -58,8 +58,33 @@ webapp/
                                    프로젝트 생성 → projectId를 3~9단계에 내려줌
   src/screens/steps/Step1~9*.tsx    각 단계. 3,5,7,9는 useJobPolling으로 백엔드 작업 실행,
                                    4,6은 동기 CRUD, 8은 요약 조회
-  src/screens/ShootingGuideScreen.tsx  MODE 2 입력 폼 + 빈 결과 화면 (계획 생성 로직은 아직 없음 - 의도된 범위)
+  src/screens/ShootingGuideScreen.tsx  MODE 2 입력 폼 + 실제 촬영 계획 결과 화면. 결과 화면에서
+                                   "이 계획으로 영상 편집 시작" 버튼을 누르면 continueToAutoEdit(plan)으로
+                                   MODE 1로 즉시 전환됨 (아래 "MODE 1 ↔ MODE 2 인계" 참고)
 ```
+
+## MODE 1 ↔ MODE 2 인계 (촬영 계획 → 자동 편집)
+
+`ProjectContext`(`src/state/ProjectContext.tsx`)가 `mode`/`category`뿐 아니라 `topic`, `shootingPlan`
+(MODE 2가 만든 전체 `ShootingPlanDto`)까지 localStorage에 함께 저장한다. 흐름:
+
+1. MODE 2에서 카테고리를 고르면 `ShootingGuideScreen`이 그 즉시 `setCategory`로 컨텍스트에 반영함
+   (폼 제출 전에도 동기화됨 - AUTO_EDIT의 카테고리 선택과 같은 패턴).
+2. 결과 화면의 **"이 계획으로 영상 편집 시작"** 버튼이 `continueToAutoEdit(plan)`을 호출 →
+   `mode`를 `AUTO_EDIT`로, `topic`을 `plan.topic`으로, `shootingPlan`을 `plan`으로 한 번에 갱신.
+   `App.tsx`의 `mode` 분기가 즉시 `AutoEditScreen`으로 전환시킨다(별도 라우팅 코드 불필요).
+3. `AutoEditScreen`은 `shootingPlan`이 있으면 1단계부터 접힌 "촬영 계획 참고" `CollapsibleSection`을
+   보여준다(카테고리·주제·앵글별 샷 순서 목록). 실제 편집 로직에는 관여하지 않는 순수 참고용 UI.
+4. `Step6SubtitlesHook`은 로컬 `topic` state의 초기값을 `useProject().topic`으로 채워 MODE 2에서
+   입력한 주제를 다시 타이핑하지 않게 하고, 입력이 바뀔 때마다 `setProjectTopic`으로 컨텍스트에도
+   반영한다.
+
+**실제 uvicorn+vite+Playwright로 전체 인계 흐름을 검증함**: MODE 2 폼 제출 → 실제 `/api/shooting-guide`
+호출 → 결과 화면 → "이 계획으로 영상 편집 시작" → AUTO_EDIT 1단계에 "촬영 계획 참고" 패널이 실제
+샷 6개(캠핑 카테고리, 5분 이상)를 정확히 표시 → 실제 합성 영상 업로드 → 2단계에 캠핑 카테고리가
+이미 선택된 채로 도착 → 실제 `POST /api/projects` → 3단계 분석 시작까지 확인함. 3단계의
+faster-whisper 모델 다운로드는 이 샌드박스에서 네트워크 차단으로 403이 나지만, 이는 에러로 정상
+표시되고 앱이 죽지 않음("다시 시도" 버튼 노출) — 실사용자 PC에서는 문제 없을 것으로 예상.
 
 ## server.py REST API
 
@@ -106,7 +131,7 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 - **hooks.py도 LLM이 아니라 카테고리 키워드(categories.py) + 문장 템플릿 조합**이다. API 키 인프라가
   프로젝트에 전혀 없어서(환경변수/키 관리 전무) 이렇게 시작함. 실제 LLM 연결 시
   `generate_hook_suggestions(topic, category, max_suggestions)` 시그니처만 유지하고 내부만 바꾸면 됨.
-- **server.py는 FastAPI TestClient로 91개 백엔드+엔진 테스트 중 18개(`tests/test_server.py`)를
+- **server.py는 FastAPI TestClient로 115개 백엔드+엔진 테스트 중 23개(`tests/test_server.py`)를
   실제로 mock 기반 검증함** — 이 과정에서 실제 버그(`library.get(mood, library["neutral"])`가
   "neutral" 키 없으면 KeyError 나는 문제, 파이썬은 기본값 인자를 즉시 평가함)를 잡아 고침.
   이런 패턴(`.get(key, dict[fallback_key])`)은 항상 `.get(key) or .get(fallback) or ...`로 바꿀 것.
@@ -130,6 +155,22 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 - **GUI(Tkinter)는 Xvfb + `apt-get install python3-tk`로 실제 창을 띄워 검증함** (기본 파이썬
   인터프리터엔 tkinter가 없을 수 있으니 `python3.12` 등 tk가 포함된 버전을 따로 써야 함).
   `ttk.Button`의 `["state"]` 값은 `str()`로 감싸야 `"disabled"`/`"normal"`과 비교 가능함(Tcl 객체).
+- **pycapcut 0.0.3은 draft_content.json의 최상위 `id`와 draft_meta_info.json의 `draft_id`를 절대
+  갱신하지 않는다** — 실제 설치된 패키지 소스(`script_file.py`의 `dumps()`, `draft_folder.py`의
+  `create_draft()`)를 직접 읽어 확인함. `DraftFolder.create_draft()`는 `draft_meta_info.json`을
+  번들 템플릿에서 그대로 복사만 하고, `ScriptFile.dumps()`도 fps/duration/canvas_config/materials/
+  tracks만 갱신하지 `content["id"]`는 안 건드린다. 그 결과 같은 CapCut 드래프트 폴더에 이 파이프라인으로
+  드래프트를 여러 개 만들면 **전부 동일한 id**(`91E08AC5-22FB-47e2-9AA0-7DC300FAEA2B`)를 갖고,
+  `draft_meta_info.json`의 `draft_id`도 전부 동일(`792BD5DA-E961-4821-B10E-F51E4683DEC0`)했으며
+  `draft_name`/`tm_duration`은 항상 빈 값/0이었음(실제로 재현해서 확인한 버그). CapCut이 내부적으로
+  이 id를 키로 쓰면(썸네일 캐시, 최근 항목, 클라우드 동기화 등) 여러 드래프트가 서로 덮어쓸 위험이
+  있어, `draft_builder.build_draft()`가 `script.save()` 직후 `_fix_draft_ids()`를 호출해 매 드래프트마다
+  새 UUID를 부여하고 `draft_meta_info.json`의 `draft_name`/`tm_duration`도 실제 값으로 채우도록
+  고쳤다(`tests/test_draft_builder_integration.py`로 실제 ffmpeg+pycapcut 검증, 두 드래프트를 같은
+  폴더에 만들어 id 4개가 전부 서로 다른지 확인). `cover`/`static_cover_image_path`/`path` 등 나머지
+  최상위 필드는 번들 템플릿의 빈 값 그대로 두었음 — CapCut이 처음 열 때 자체적으로 채우는 필드로
+  추정되지만(일반적인 NLE 드래프트 포맷 관례), **실제 CapCut 앱으로 열어본 것은 아니라서 확정 검증은
+  못함** (이 환경엔 CapCut이 설치 불가 - Linux 컨테이너, CapCut은 Windows/Mac/모바일 전용).
 
 ## 흔한 실패 지점과 원인 (실제로 겪은 버그들)
 
@@ -153,12 +194,27 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
    안 함, `--reload` 안 쓰는 한). `lsof -i :8000` 또는 `ps aux | grep run_server`로 실제 PID를 확인해
    확실히 죽이고 나서 재시작할 것. `pkill -f uvicorn` 같은 패턴 매칭은 이 환경에서 가끔 조용히
    실패하거나 세션을 리셋시키므로, PID를 직접 확인 후 `kill <pid>`로 죽이는 편이 안전하다.
+10. **`<ol>`/`<ul>`에 항목 순서를 문자열로 직접 써넣으면서(`{item.order}. ...`) 리스트의 CSS를
+    `list-style: none`으로 안 지우면 브라우저 기본 번호("1.")와 직접 쓴 번호가 겹쳐서 "1. 1. 제목"처럼
+    두 번 보인다. 실제로 `AutoEditScreen`의 "촬영 계획 참고" 패널에서 Playwright 스크린샷으로 발견함.
+    순서를 텍스트로 직접 렌더링하는 리스트는 항상 `list-style: none`을 같이 넣을 것
+    (`ShootingGuideScreen.module.css`의 `.shotList`가 이미 이렇게 하고 있었음 - 새 리스트 만들 때
+    이 패턴을 그대로 베낄 것).
+11. **`webapp` 유닛테스트를 실제 백엔드(uvicorn)가 8000번 포트에서 떠 있는 상태로 돌리면, `vi.mock`으로
+    안 감싼 API 호출이 실제 네트워크 요청으로 진짜 서버를 때려서 테스트가 원래 기대하던 "요청 실패"
+    경로 대신 진짜 데이터를 받아버려 다른 곳에서 실패가 난다** — 실제로 `accessibility.test.tsx`의
+    "SHOOTING_GUIDE 빈 결과 화면" 테스트가 이걸로 실패함(이름 그대로 원래는 mock 없이 fetch 실패 →
+    빈 화면을 기대했는데, 살아있는 백엔드가 진짜 샷 데이터를 반환해서 실제 헤딩 순서 버그(h1→h3,
+    h2 없이 건너뜀)가 처음으로 드러남). `npx vitest run`은 항상 백엔드 서버를 끄고 돌릴 것
+    (`lsof -i :8000`으로 확인). 이 김에 그 헤딩 버그(`ShootingGuideScreen.tsx`의 샷 제목 `<h3>`를
+    `<h2>`로 수정)도 고쳤고, 실제 샷 데이터를 mock으로 넣어 axe를 돌리는 테스트를 추가해 백엔드가
+    꺼져 있어도 이 회귀를 잡을 수 있게 했다.
 
 ## 코드를 고친 뒤 검증하는 방법
 
 ```bash
 # 1. 파이썬 순수 로직 전체 (항상 통과해야 함, ffmpeg/whisper/pycapcut 불필요)
-python3 -m unittest discover -s tests -v   # 91개
+python3 -m unittest discover -s tests -v   # 115개
 
 # 2. .bat 파일을 건드렸다면 CRLF/괄호 이스케이프 재확인 (위 1, 2번 참고)
 
@@ -167,12 +223,12 @@ python3 -m unittest discover -s tests -v   # 91개
 #    test_*_integration.py가 예시. ffmpeg 빌드에 --enable-libvidstab 있는지 `ffmpeg -filters | grep vidstab`)
 
 # 4. server.py를 건드렸다면 FastAPI TestClient로 (실제 ffmpeg/whisper는 mock):
-python3 -m unittest tests.test_server -v   # 18개, ProjectStore를 tempdir로 patch해서 격리
+python3 -m unittest tests.test_server -v   # 23개, ProjectStore를 tempdir로 patch해서 격리
 
 # 5. gui.py를 건드렸다면 Xvfb로 실제 렌더링 (apt-get install python3-tk x11-apps 최초 1회)
 
-# 6. webapp/을 건드렸다면
-cd webapp && npx tsc -b && npm run build && npx vitest run   # 30개
+# 6. webapp/을 건드렸다면 (백엔드가 8000번 포트에서 떠 있으면 vitest 먼저 끌 것 - 위 "흔한 실패 지점" 11번 참고)
+cd webapp && npx tsc -b && npm run build && npx vitest run   # 39개
 
 # 7. 백엔드+프론트엔드 통합을 건드렸다면 진짜로 둘 다 띄워서 확인 (CORS 포트 주의! 위 6번 참고):
 python3 -c "

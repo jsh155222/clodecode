@@ -23,7 +23,7 @@ interface ShootingGuideScreenProps {
 
 /** MODE 2(AI 촬영 가이드) 입력 화면 + 촬영 계획(앵글/순서) 결과 화면. */
 export function ShootingGuideScreen({ onBack }: ShootingGuideScreenProps) {
-  const { category, setCategory } = useProject()
+  const { category, setCategory, continueToAutoEdit } = useProject()
   const [input, setInput] = useState<ShootingGuideInput>({ ...EMPTY_SHOOTING_GUIDE_INPUT, category })
   const [plan, setPlan] = useState<ShootingPlanDto | null>(null)
   const [loading, setLoading] = useState(false)
@@ -85,7 +85,7 @@ export function ShootingGuideScreen({ onBack }: ShootingGuideScreenProps) {
                 <span className={styles.angleBadge}>{shot.angleLabel}</span>
                 <span className={styles.shotSeconds}>약 {shot.estimatedSeconds}초</span>
               </div>
-              <h3 className={styles.shotTitle}>{shot.title}</h3>
+              <h2 className={styles.shotTitle}>{shot.title}</h2>
               <p className={styles.shotDescription}>{shot.description}</p>
               {shot.tip ? <p className={styles.shotTip}>💡 {shot.tip}</p> : null}
             </li>
@@ -102,7 +102,10 @@ export function ShootingGuideScreen({ onBack }: ShootingGuideScreenProps) {
         <Button variant="secondary" onClick={() => setPlan(null)} className={styles.backToFormButton}>
           입력 내용 수정하기
         </Button>
-        <Button onClick={onBack} className={styles.nextButton}>
+        <Button onClick={() => continueToAutoEdit(plan)} className={styles.nextButton}>
+          이 계획으로 영상 편집 시작
+        </Button>
+        <Button variant="secondary" onClick={onBack} className={styles.backToFormButton}>
           처음으로 돌아가기
         </Button>
       </div>

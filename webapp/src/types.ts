@@ -44,8 +44,11 @@ export const AUTO_EDIT_STEPS = [
 
 export type AutoEditStepNumber = (typeof AUTO_EDIT_STEPS)[number]['step']
 
-/** 현재 진행 중인 프로젝트 상태. 카테고리는 프로젝트에 저장되고 새로고침 후에도 복원된다. */
+/** 현재 진행 중인 프로젝트 상태. 카테고리/주제는 프로젝트에 저장되고 새로고침 후에도 복원된다. */
 export interface ProjectState {
   mode: AppMode | null
   category: ContentCategory | null
+  topic: string
+  /** MODE 2에서 만든 촬영 계획. MODE 1으로 넘어갈 때 참고용으로 들고 간다. */
+  shootingPlan: import('./api/client').ShootingPlanDto | null
 }

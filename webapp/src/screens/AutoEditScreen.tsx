@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { StepHeader } from '../components/StepHeader'
 import { StatusMessage } from '../components/StatusMessage'
+import { CollapsibleSection } from '../components/CollapsibleSection'
 import { AUTO_EDIT_STEPS } from '../types'
 import type { AutoEditStepNumber } from '../types'
 import { useProject } from '../state/ProjectContext'
@@ -22,7 +23,7 @@ interface AutoEditScreenProps {
 
 /** MODE 1(AI 자동 편집)의 9단계. 1~2단계 이후 백엔드에 프로젝트를 생성해 3~9단계를 실제로 처리한다. */
 export function AutoEditScreen({ onExitToStart }: AutoEditScreenProps) {
-  const { category, setCategory } = useProject()
+  const { category, setCategory, shootingPlan } = useProject()
   const [step, setStep] = useState<AutoEditStepNumber>(1)
   const [videoFile, setVideoFile] = useState<File | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
@@ -62,6 +63,22 @@ export function AutoEditScreen({ onExitToStart }: AutoEditScreenProps) {
         stepLabel={stepMeta.label}
         onBack={() => goToStep(step - 1)}
       />
+      {shootingPlan ? (
+        <div style={{ marginTop: 16 }}>
+          <CollapsibleSection title="촬영 계획 참고">
+            <p className={placeholderStyles.hint}>
+              {shootingPlan.categoryLabel} · {shootingPlan.topic}
+            </p>
+            <ol className={placeholderStyles.shootingPlanList}>
+              {shootingPlan.shots.map((shot) => (
+                <li key={shot.order}>
+                  {shot.order}. [{shot.angleLabel}] {shot.title}
+                </li>
+              ))}
+            </ol>
+          </CollapsibleSection>
+        </div>
+      ) : null}
       <div style={{ marginTop: 24 }}>
         {step === 1 ? <Step1UploadVideo file={videoFile} onFileSelected={setVideoFile} onNext={() => goToStep(2)} /> : null}
 

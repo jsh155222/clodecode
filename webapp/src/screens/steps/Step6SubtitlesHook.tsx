@@ -9,6 +9,7 @@ import {
   updateSubtitles,
   type SubtitleLineDto,
 } from '../../api/client'
+import { useProject } from '../../state/ProjectContext'
 import { formatTime } from '../../utils/formatTime'
 import placeholderStyles from './StepCommon.module.css'
 import styles from './Step6SubtitlesHook.module.css'
@@ -20,9 +21,11 @@ interface Step6SubtitlesHookProps {
 
 /** 6단계: 자동 생성된 자막을 검토/수정하고, 도입부 훅 문구를 고른다. */
 export function Step6SubtitlesHook({ projectId, onNext }: Step6SubtitlesHookProps) {
+  const { topic: projectTopic, setTopic: setProjectTopic } = useProject()
   const [lines, setLines] = useState<SubtitleLineDto[]>([])
   const [loading, setLoading] = useState(true)
-  const [topic, setTopic] = useState('')
+  // MODE 2(촬영 가이드)에서 넘어온 주제가 있으면 다시 입력하지 않도록 미리 채운다.
+  const [topic, setTopic] = useState(projectTopic)
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [hookLoading, setHookLoading] = useState(false);
@@ -34,6 +37,11 @@ export function Step6SubtitlesHook({ projectId, onNext }: Step6SubtitlesHookProp
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, [projectId]);
+
+  const handleTopicChange = (value: string) => {
+    setTopic(value)
+    setProjectTopic(value)
+  }
 
   const updateLineText = (index: number, text: string) => {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, text } : line)));
@@ -83,7 +91,7 @@ export function Step6SubtitlesHook({ projectId, onNext }: Step6SubtitlesHookProp
       ) : null}
 
       <h2 className={styles.sectionTitle}>훅 문구</h2>
-      <TextField label="영상 주제" value={topic} onChange={setTopic} placeholder="예: 원룸 정리 루틴" />
+      <TextField label="영상 주제" value={topic} onChange={handleTopicChange} placeholder="예: 원룸 정리 루틴" />
       <Button variant="secondary" onClick={handleGenerateHooks} disabled={!topic.trim() || hookLoading}>
         훅 문구 추천받기
       </Button>
