@@ -50,7 +50,7 @@ capcut_auto/
   ai/                     AI 기반 자동 편집 핵심 기능 (아래 "capcut_auto/ai/" 절 참고).
                           기존 규칙 기반 파이프라인과 독립적으로 추가된 레이어 - server.py의
                           3/4/6단계는 아직 이 패키지를 쓰지 않음(연결은 다음 단계)
-tests/                    188개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
+tests/                    221개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
                           test_*_integration.py는 실제 ffmpeg 있을 때만 돌아감(skipUnless).
                           ai_test_helpers.py는 진짜 네트워크 호출 없이 client.py를 검증하는
                           가짜(fake) Anthropic 클라이언트 - 모든 tests/test_ai_*.py가 공유함
@@ -125,9 +125,17 @@ ai/
   hook_ai.py              HookType, HookCandidate, generate_ai_hooks(), validate_hook_grounding()
                           (evidenceSegmentIds가 전부 실재하는 segment id를 가리키는지 검증 -
                           지어낸 근거의 훅은 코드에서 버림)
-  category_rules.py       categories.py의 CategoryRule에 추가된 protected_scene_keywords/
-                          subtitle_density_label을 AI 입력으로 연결 (build_cut_protection_rules,
-                          build_subtitle_density_rule, category_label)
+  category_rules.py       category-rules/*.json → capcut_auto.category_rules.CategoryRuleSet을
+                          AI 입력 파라미터 모양(camelCase 문자열/리스트)으로 바꿔주는 얇은 어댑터.
+                          build_cut_protection_rules/build_removable_moment_hints/
+                          build_preferred_pacing/build_preserve_natural_audio/
+                          build_subtitle_density_rule/build_safety_checks(카테고리 규칙 +
+                          공통 규칙을 합쳐서 반환, include_common=False로 카테고리 규칙만도 가능)/
+                          build_discouraged_sound_effects/build_preferred_shot_types/
+                          build_shooting_guide_rules/category_label. **더 이상 categories.py를
+                          데이터 소스로 쓰지 않는다** - categories.py의 CategoryRule에 있던
+                          protected_scene_keywords/subtitle_density_label 필드는 이제
+                          category-rules/*.json이 유일한 출처가 되면서 삭제됨(중복 소스 방지)
 ```
 
 **아직 검증되지 않은 부분**: 실제 Claude API 호출(진짜 ANTHROPIC_API_KEY로 정상 응답을
@@ -137,6 +145,46 @@ ai/
 구성(system/messages 분리, JSON 직렬화)과 응답 파싱/검증 로직은 진짜 코드지만, "Claude가
 실제로 이 프롬프트에 이렇게 응답한다"는 것 자체는 미검증이다. 실사용자가 API 키를 넣고
 한 번 실행해보면 프롬프트 튜닝이 필요할 수 있다는 점을 안내할 것.
+
+## category-rules/ - 카테고리별 규칙 (독립 설정 파일)
+
+카테고리마다 별도의 코드/앱을 두지 않는다. `category-rules/<카테고리소문자>.json` 8개
+(7개 카테고리 + `common.json`)가 유일한 데이터 소스이고, `capcut_auto/category_rules.py`가
+이를 읽어 `CategoryRuleSet` 파이썬 객체로 만든 뒤, `ai/category_rules.py`가 그걸 각 AI 모듈이
+받는 파라미터 모양으로 변환해 넘긴다. 새 카테고리를 추가하거나 기존 규칙을 조정할 때
+**파이썬 코드를 건드릴 필요가 없다** - JSON 파일만 고치면 된다.
+
+```
+category-rules/
+  common.json     모든 카테고리에 공통으로 적용되는 7개 규칙(commonRules) - load_common_rules()
+  living.json     ContentCategory와 1:1 대응. 각 파일은 CategoryRuleSet 인터페이스와
+  cleaning.json   정확히 같은 필드를 camelCase로 담는다: category, protectedMoments,
+  food.json       removableMoments, preferredPacing(SLOW/MEDIUM/FAST),
+  parenting.json  subtitleDensity(LOW/MEDIUM/HIGH), preserveNaturalAudio(bool),
+  beauty.json     preferredShotTypes, discouragedSoundEffects, safetyChecks,
+  travel.json     shootingGuideRules
+  camping.json
+```
+
+`capcut_auto/category_rules.py`:
+- `CategoryRuleSet` (frozen dataclass, snake_case 필드) + `.to_payload()`(camelCase dict로 역변환)
+- `load_category_rule_set(category, rules_dir=None)` - 필수 키 누락/잘못된 enum 값(preferredPacing이
+  SLOW/MEDIUM/FAST가 아니거나, subtitleDensity가 LOW/MEDIUM/HIGH가 아니면)이면 **조용히 기본값으로
+  넘어가지 않고 예외를 던진다** (안전 규칙처럼 조용히 틀리면 안 되는 데이터라서 fail-fast로 설계함)
+- `load_common_rules()`, `load_all_category_rule_sets()`(전체 로드, 테스트/검증용)
+- `sfx_allowed(rule_set)` - `preserve_natural_audio`가 true면 효과음을 제한(False)하는 순수 함수
+
+**사용자가 명시적으로 준 스펙만 데이터로 넣었다**: 예를 들어 살림/뷰티는 "삭제 후보"나
+"규칙" 목록이 스펙에 없었으므로 `removableMoments`/`safetyChecks`를 빈 배열로 두었다(임의로
+지어내지 않음). `preferredPacing`/`subtitleDensity`처럼 스펙에 명시되지 않은 필드는 카테고리의
+성격과 기존 `cutlist_config`(edge padding 크기 - 클수록 보수적으로 컷)에서 합리적으로 추론해
+채웠다 - 정확한 매핑 근거는 `capcut_auto/ai/category_rules.py`와 커밋 메시지에 남겨뒀다.
+
+`tests/test_category_rules.py`(33개)가 요청받은 10개 테스트 항목(보호 구간/삭제 후보/자막
+밀도/훅 생성/자연음 보호/화면 구도/효과음 제한/안전 규칙/기존 엔진 정상 작동/카테고리 간
+미혼입)을 각각 커버한다. "다른 카테고리가 섞이지 않는지"는 전체 카테고리 쌍의 protectedMoments가
+서로 다른지, 한 카테고리를 로드해도 다른 카테고리 로드 결과가 안 바뀌는지, 같은 프로세스에서
+연속으로 다른 카테고리를 호출해도 페이로드가 안 섞이는지까지 실제로 확인한다.
 
 ## MODE 1 ↔ MODE 2 인계 (촬영 계획 → 자동 편집)
 
@@ -206,7 +254,7 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 - **hooks.py도 LLM이 아니라 카테고리 키워드(categories.py) + 문장 템플릿 조합**이다. API 키 인프라가
   프로젝트에 전혀 없어서(환경변수/키 관리 전무) 이렇게 시작함. 실제 LLM 연결 시
   `generate_hook_suggestions(topic, category, max_suggestions)` 시그니처만 유지하고 내부만 바꾸면 됨.
-- **server.py는 FastAPI TestClient로 188개 백엔드+엔진 테스트 중 23개(`tests/test_server.py`)를
+- **server.py는 FastAPI TestClient로 221개 백엔드+엔진 테스트 중 23개(`tests/test_server.py`)를
   실제로 mock 기반 검증함** — 이 과정에서 실제 버그(`library.get(mood, library["neutral"])`가
   "neutral" 키 없으면 KeyError 나는 문제, 파이썬은 기본값 인자를 즉시 평가함)를 잡아 고침.
   이런 패턴(`.get(key, dict[fallback_key])`)은 항상 `.get(key) or .get(fallback) or ...`로 바꿀 것.
@@ -289,7 +337,7 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 
 ```bash
 # 1. 파이썬 순수 로직 전체 (항상 통과해야 함, ffmpeg/whisper/pycapcut 불필요)
-python3 -m unittest discover -s tests -v   # 188개
+python3 -m unittest discover -s tests -v   # 221개
 
 # 2. .bat 파일을 건드렸다면 CRLF/괄호 이스케이프 재확인 (위 1, 2번 참고)
 

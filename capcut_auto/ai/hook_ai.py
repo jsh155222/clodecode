@@ -61,11 +61,15 @@ def generate_ai_hooks(
     topic: str,
     segments: Sequence[TranscriptSegment],
     category_label: Optional[str] = None,
+    safety_checks: Sequence[str] = (),
     *,
     client: Optional[anthropic.Anthropic] = None,
     **call_kwargs,
 ) -> List[HookCandidate]:
     """AI로 훅 후보 3~5개를 생성하고, 근거 segment id가 실재하는 후보만 남긴다.
+
+    safety_checks는 category_rules.CategoryRuleSet에서 뽑은 카테고리별 안전 규칙이다
+    (예: 뷰티의 "의학적 효능 생성 금지", 여행의 "장소명과 가격을 추측하지 않는다").
 
     Raises:
         AiModuleError: AI 호출이 재시도/수정까지 실패한 경우. 호출자는 기존
@@ -77,6 +81,7 @@ def generate_ai_hooks(
         input_data={
             "topic": topic,
             "category": category_label,
+            "safetyChecks": list(safety_checks),
             "segments": [{"id": s.id, "start": s.start, "end": s.end, "text": s.text} for s in segments],
         },
         output_schema=HOOK_CANDIDATES_SCHEMA,

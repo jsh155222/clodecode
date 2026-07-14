@@ -121,11 +121,19 @@ def _build_input(
     category_label: Optional[str],
     category_protection_rules: Sequence[str],
     protected_intervals: Sequence[ProtectedInterval],
+    removable_moment_hints: Sequence[str] = (),
+    preferred_pacing: Optional[str] = None,
+    preserve_natural_audio: Optional[bool] = None,
+    safety_checks: Sequence[str] = (),
 ) -> dict:
     return {
         "totalDuration": total_duration,
         "category": category_label,
         "categoryProtectionRules": list(category_protection_rules),
+        "removableMomentHints": list(removable_moment_hints),
+        "preferredPacing": preferred_pacing,
+        "preserveNaturalAudio": preserve_natural_audio,
+        "safetyChecks": list(safety_checks),
         "protectedIntervals": [
             {"start": p.start, "end": p.end, "reason": p.reason} for p in protected_intervals
         ],
@@ -141,11 +149,19 @@ def analyze_cut_candidates(
     category_label: Optional[str] = None,
     category_protection_rules: Sequence[str] = (),
     protected_intervals: Sequence[ProtectedInterval] = (),
+    removable_moment_hints: Sequence[str] = (),
+    preferred_pacing: Optional[str] = None,
+    preserve_natural_audio: Optional[bool] = None,
+    safety_checks: Sequence[str] = (),
     *,
     client: Optional[anthropic.Anthropic] = None,
     **call_kwargs,
 ) -> List[CutCandidate]:
     """AI로 컷 후보를 분석한다.
+
+    removable_moment_hints/preferred_pacing/preserve_natural_audio/safety_checks는
+    category_rules.CategoryRuleSet에서 뽑아 카테고리별로 다르게 채워 넣는 값들이다
+    (ai/category_rules.py의 build_removable_moment_hints 등 참고).
 
     Raises:
         AiModuleError: 재시도/수정까지 실패. 호출자는 기존 규칙 기반 파이프라인
@@ -156,7 +172,15 @@ def analyze_cut_candidates(
         module_name="cut_candidates",
         system_prompt=SYSTEM_PROMPT,
         input_data=_build_input(
-            segments, total_duration, category_label, category_protection_rules, protected_intervals
+            segments,
+            total_duration,
+            category_label,
+            category_protection_rules,
+            protected_intervals,
+            removable_moment_hints=removable_moment_hints,
+            preferred_pacing=preferred_pacing,
+            preserve_natural_audio=preserve_natural_audio,
+            safety_checks=safety_checks,
         ),
         output_schema=CUT_CANDIDATES_SCHEMA,
     )

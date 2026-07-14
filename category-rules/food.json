@@ -1,0 +1,42 @@
+{
+  "category": "FOOD",
+  "protectedMoments": [
+    "재료 투입",
+    "지글거리는 소리",
+    "칼질",
+    "소스 붓기",
+    "핵심 조리 변화",
+    "음식 단면",
+    "김과 수증기",
+    "플레이팅",
+    "완성 음식",
+    "한입 장면",
+    "실제 맛 반응",
+    "조리 시간과 온도",
+    "조리 안전 정보"
+  ],
+  "removableMoments": [],
+  "preferredPacing": "MEDIUM",
+  "subtitleDensity": "HIGH",
+  "preserveNaturalAudio": true,
+  "preferredShotTypes": [
+    "top_down",
+    "side_angle_30_45",
+    "close_up",
+    "extreme_close_up"
+  ],
+  "discouragedSoundEffects": [
+    "인공 지글거림 효과음",
+    "인공 칼질 효과음",
+    "인공 보글거림 효과음"
+  ],
+  "safetyChecks": [],
+  "shootingGuideRules": [
+    "실제 조리음을 인공 효과음보다 우선한다",
+    "재료는 top_down으로 촬영",
+    "조리는 30~45도 side_angle로 촬영",
+    "소스는 close_up으로 촬영",
+    "단면은 extreme_close_up으로 촬영",
+    "완성 음식은 close_up으로 촬영"
+  ]
+}

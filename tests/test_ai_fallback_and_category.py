@@ -115,7 +115,7 @@ class TestCategorySpecificJudgment(unittest.TestCase):
 
         sent = json.loads(client.messages.calls[0]["messages"][0]["content"])
         self.assertEqual(sent["category"], "육아")
-        self.assertIn("아이 안전 관련 장면", sent["categoryProtectionRules"])
+        self.assertIn("아이 안전 정보", sent["categoryProtectionRules"])
 
     def test_category_density_rule_reaches_subtitle_optimizer_payload(self):
         lines = [SubtitleLineWithId(id="l1", start=0.0, end=1.0, text="자막")]
@@ -132,7 +132,7 @@ class TestCategorySpecificJudgment(unittest.TestCase):
 
         sent = json.loads(client.messages.calls[0]["messages"][0]["content"])
         self.assertEqual(sent["category"], "청소")
-        self.assertIn("간결", sent["densityRule"])
+        self.assertIn("최소화", sent["densityRule"])
 
 
 if __name__ == "__main__":

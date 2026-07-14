@@ -198,3 +198,26 @@ python -m unittest tests.test_ai_client tests.test_ai_cut_candidates \
   tests.test_ai_subtitle_optimizer tests.test_ai_subtitle_highlight \
   tests.test_ai_hook tests.test_ai_fallback_and_category -v   # 73개
 ```
+
+## 카테고리별 규칙 (category-rules/)
+
+카테고리마다 별도의 앱이나 코드 분기를 두지 않습니다. `category-rules/*.json`
+(살림/청소/음식/육아/뷰티/여행/캠핑 + 공통 규칙, 총 8개 파일)이 유일한 데이터 소스이고,
+`capcut_auto/category_rules.py`가 이를 읽어 위 AI 엔진에 그대로 전달합니다. 새 카테고리를
+추가하거나 규칙을 조정할 때 파이썬 코드를 건드릴 필요 없이 JSON 파일만 고치면 됩니다.
+
+각 파일은 다음 필드를 담습니다: `protectedMoments`(보호 구간), `removableMoments`(삭제
+후보), `preferredPacing`(SLOW/MEDIUM/FAST), `subtitleDensity`(LOW/MEDIUM/HIGH),
+`preserveNaturalAudio`(자연음 보호 여부), `preferredShotTypes`(추천 구도),
+`discouragedSoundEffects`(지양할 효과음), `safetyChecks`(카테고리별 안전 규칙),
+`shootingGuideRules`(촬영 가이드 규칙). `common.json`의 7개 공통 규칙은 모든 카테고리에
+항상 함께 적용됩니다.
+
+**정직하게 밝혀둘 부분**: 사용자가 명시적으로 제시한 보호 구간/삭제 후보/규칙/추천 구도는
+그대로 반영했습니다. 반면 `preferredPacing`·`subtitleDensity`처럼 명시되지 않은 값은
+카테고리 성격에 맞춰 합리적으로 추론해 채웠습니다(예: 정보량이 많은 음식 카테고리는
+자막 밀도 HIGH, 무음 컷 여유를 크게 둔 여행/캠핑/육아는 페이싱 SLOW).
+
+```bash
+python -m unittest tests.test_category_rules -v   # 33개
+```
