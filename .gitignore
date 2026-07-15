@@ -13,3 +13,5 @@ venv/
 ffmpeg/
 ffmpeg_temp.zip
 ffmpeg_extract/
+desktop/node_modules/
+desktop/dist-electron/

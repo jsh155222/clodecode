@@ -7,6 +7,8 @@
 """
 
 import io
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -584,6 +586,83 @@ class TestSummary(ServerTestCase):
         self.assertEqual(data["categoryLabel"], "뷰티")
         self.assertFalse(data["correctionApplied"])
         self.assertFalse(data["audioApplied"])
+
+
+class TestAppStateDirEnvOverride(unittest.TestCase):
+    """데스크톱 앱(desktop/main.js)이 쓰기 가능한 사용자 폴더를 가리킬 수 있어야 한다.
+
+    server.py 모듈이 이미 다른 테스트에서 import되어 있어(공유 app 인스턴스) 같은
+    프로세스에서 reload하면 부작용이 있으므로, 별도 서브프로세스로 깨끗하게 검증한다.
+    """
+
+    def test_env_override_is_used_as_app_state_dir(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import os; os.environ['CAPCUT_AUTO_STATE_DIR']='/tmp/custom_state_dir'; "
+                "import capcut_auto.server as s; print(s.APP_STATE_DIR)",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(result.stdout.strip(), "/tmp/custom_state_dir")
+
+    def test_no_env_falls_back_to_relative_default(self):
+        result = subprocess.run(
+            [sys.executable, "-c", "import capcut_auto.server as s; print(s.APP_STATE_DIR)"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(result.stdout.strip(), "capcut_auto_server_work")
+
+
+class TestFrontendStaticServing(unittest.TestCase):
+    """데스크톱 앱이 uvicorn 프로세스 하나로 API+화면을 함께 서빙할 수 있는지 검증."""
+
+    def test_does_not_mount_when_no_build_exists(self):
+        from fastapi import FastAPI
+
+        with tempfile.TemporaryDirectory() as tmp:
+            empty_dist = Path(tmp) / "dist"  # index.html 없음(빌드 전)
+            test_app = FastAPI()
+            routes_before = list(test_app.routes)
+            mounted = server_mod._maybe_mount_frontend(test_app, empty_dist)
+            self.assertFalse(mounted)
+            self.assertEqual(test_app.routes, routes_before)  # 마운트 안 됨 - 라우트 그대로
+
+    def test_mounts_and_serves_index_html_when_build_exists(self):
+        from fastapi import FastAPI
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp) / "dist"
+            dist.mkdir()
+            (dist / "index.html").write_text("<html><body>hello capcut-auto</body></html>", encoding="utf-8")
+            (dist / "app.js").write_text("console.log('hi')", encoding="utf-8")
+
+            test_app = FastAPI()
+
+            @test_app.get("/api/ping")
+            def ping():
+                return {"ok": True}
+
+            mounted = server_mod._maybe_mount_frontend(test_app, dist)
+            self.assertTrue(mounted)
+
+            client = TestClient(test_app)
+            index_response = client.get("/")
+            self.assertEqual(index_response.status_code, 200)
+            self.assertIn("hello capcut-auto", index_response.text)
+
+            asset_response = client.get("/app.js")
+            self.assertEqual(asset_response.status_code, 200)
+
+            # 정적 마운트가 API 라우트를 가리면 안 된다
+            api_response = client.get("/api/ping")
+            self.assertEqual(api_response.status_code, 200)
+            self.assertEqual(api_response.json(), {"ok": True})
 
 
 class TestShootingGuideEndpoint(ServerTestCase):

@@ -1,10 +1,15 @@
 /**
  * capcut_auto FastAPI 백엔드(server.py) 호출 클라이언트.
  * 백엔드는 로컬 프로세스로 기동되어 있어야 한다: `uvicorn capcut_auto.server:app --port 8000`
+ *
+ * 기본값은 같은 오리진(상대 경로)이다 - 프로덕션 빌드(webapp/dist)를 server.py 자신이
+ * 정적 파일로 서빙하는 데스크톱 앱 구성에서는 프론트엔드와 API가 항상 같은 포트에 있으므로
+ * 이렇게 해야 포트가 바뀌어도(예: 8000이 이미 쓰이는 중이라 다른 포트로 뜬 경우) 그대로 동작한다.
+ * `npm run dev`(vite 개발 서버, 5173)에서는 백엔드가 다른 포트(8000)에 떠 있으므로
+ * webapp/.env.development의 VITE_API_BASE가 이 기본값을 덮어쓴다.
  */
-
 const API_BASE = (import.meta as unknown as { env?: Record<string, string | undefined> }).env
-  ?.VITE_API_BASE ?? 'http://127.0.0.1:8000'
+  ?.VITE_API_BASE ?? ''
 
 export class ApiError extends Error {
   status: number

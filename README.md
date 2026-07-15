@@ -172,9 +172,50 @@ npm run dev   # http://localhost:5173 접속
 **테스트**:
 
 ```bash
-python -m unittest tests.test_server -v   # 백엔드 API (mock 기반, 23개)
+python -m unittest tests.test_server -v   # 백엔드 API (mock 기반, 52개)
 cd webapp && npx vitest run                # 프론트엔드 (52개)
 ```
+
+## 데스크톱 앱 (desktop/, Windows/Mac 설치형)
+
+터미널 두 개를 직접 띄우는 위 웹앱 방식 대신, 아이콘 더블클릭으로 켜지는 네이티브 창 앱이
+필요하면 `desktop/`의 Electron 셸을 씁니다. 백엔드(uvicorn)를 자식 프로세스로 띄우고, 그
+주소(`capcut_auto/server.py`가 `webapp/dist`까지 함께 서빙하도록 구성해뒀음 - 아래 참고)를
+여는 창 하나만 보여주는 얇은 래퍼입니다.
+
+```bash
+# 1) 프론트엔드를 정적 파일로 빌드 (server.py가 이걸 직접 서빙함)
+cd webapp && npm install && npm run build
+
+# 2) 데스크톱 셸 실행 (개발 중 미리보기)
+cd ../desktop && npm install && npm start
+
+# 3) 배포용 설치 파일 만들기 (Windows에서는 .exe, Mac에서는 .dmg)
+npm run dist
+```
+
+처음 실행하면 `desktop/setup.js`가 필요한 Python 패키지를 자동으로 설치합니다(진행 상황을
+보여주는 작은 창이 뜸) - `install.bat`의 venv+pip install 로직을 그대로 Node에서 재현한
+것이라 미리 `install.bat`을 실행해 둘 필요는 없습니다. 다만 ffmpeg 자동 다운로드는 Windows
+에서만 지원하며(install.bat과 동일한 방식), macOS/Linux는 `brew install ffmpeg` 등으로
+직접 설치해야 합니다. Python 자체(3.10+)는 미리 설치되어 있어야 합니다.
+
+**정직하게 밝혀둘 부분(중요)**: 이 데스크톱 앱은 이번 세션에서 만들었지만, **Electron 실행
+파일 자체를 이 개발 샌드박스에서 내려받을 수 없어서**(`npm install`이 Electron 바이너리를
+GitHub에서 받으려다 프록시 정책에 403으로 막힘 - huggingface.co/gyan.dev가 막히는 것과 같은
+종류의 네트워크 제약) Electron 창이 실제로 뜨는지, `npm run dist`로 만든 설치 파일이 실제로
+동작하는지는 **검증하지 못했습니다.** 대신 다음은 실제로 검증했습니다:
+- `capcut_auto/server.py`가 `webapp/dist`를 정적 파일로 서빙하면서 동시에 `/api/...`가 그대로
+  동작하는지: 실제 빌드 + 실제 uvicorn + Playwright로 확인함(스크린샷 있음).
+- `desktop/setup.js`의 핵심 로직(venv 생성 → pip install → 실제 import 가능 여부 확인, 이미
+  설치돼 있으면 건너뛰는 캐시 동작): Electron 없이 순수 Node 스크립트로 실제 venv를 만들고
+  실제 pip install을 끝까지 실행해 확인함(재실행 시 1초 안에 "이미 준비됨"으로 스킵되는 것도 확인).
+- `desktop/main.js`(Electron 창 생성/백엔드 프로세스 관리/종료 처리)는 Electron API를 정확히
+  따랐는지 코드 리뷰로는 확인했지만, **실제로 실행해본 것은 아닙니다.**
+
+실사용 전에 반드시 Windows/Mac에서 `cd desktop && npm install && npm start`로 창이 실제로
+뜨는지, `npm run dist`로 만든 설치 파일이 실제로 CapCut Auto Editor를 실행하는지 확인해야
+합니다. 문제가 있으면 어떤 오류가 나는지 알려주시면 바로 고칠 수 있습니다.
 
 ## AI 자동 편집 핵심 기능 (capcut_auto/ai/, 진행 중)
 

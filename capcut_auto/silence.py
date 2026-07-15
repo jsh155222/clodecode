@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
 import shutil
@@ -17,7 +18,15 @@ _SILENCE_END_RE = re.compile(r"silence_end:\s*(-?[0-9.]+)")
 
 
 def _bundled_binary_dir() -> Path:
-    """install.bat이 내려받아 놓는 ffmpeg 번들 위치 (<repo_root>/ffmpeg/bin)."""
+    """install.bat이 내려받아 놓는 ffmpeg 번들 위치 (<repo_root>/ffmpeg/bin).
+
+    CAPCUT_AUTO_FFMPEG_DIR 환경변수가 있으면 그쪽을 우선한다 - 데스크톱 앱(desktop/main.js)처럼
+    실행 코드 위치(쓰기 권한 없을 수 있음)와 실제 ffmpeg를 내려받아 둘 위치(사용자별 쓰기 가능한
+    폴더)가 다른 경우를 위함.
+    """
+    override = os.environ.get("CAPCUT_AUTO_FFMPEG_DIR")
+    if override:
+        return Path(override)
     return Path(__file__).resolve().parent.parent / "ffmpeg" / "bin"
 
 

@@ -1,6 +1,6 @@
 ---
 name: capcut-auto
-description: Use when working on this repo's capcut_auto/ pycapcut-based CapCut auto-editing engine (silence/filler-word/stutter auto-cut, auto-subtitles, visual correction, audio mixing, hook generation, shooting-guide/shot-list generation), its FastAPI backend (server.py), the webapp/ React frontend (mode/category selection, 9-step AUTO_EDIT wizard, SHOOTING_GUIDE form + result), its Tkinter GUI/CLI, or its Windows install.bat/run.bat installer. Also use when the user asks in Korean or English to build/extend/debug "CapCut 자동 편집", "무음 컷", "버벅임/필러워드 컷", "자막 자동 생성", "화면 보정", "배경음/효과음", "훅 문구", "촬영 가이드/앵글/촬영 순서", a "pycapcut" automation, or the webapp/backend integration, or reports install.bat/run.bat errors. Trigger even if they don't name the file paths directly - match on the task shape, not just exact keywords.
+description: Use when working on this repo's capcut_auto/ pycapcut-based CapCut auto-editing engine (silence/filler-word/stutter auto-cut, auto-subtitles, visual correction, audio mixing, hook generation, shooting-guide/shot-list generation), its FastAPI backend (server.py), the webapp/ React frontend (mode/category selection, 9-step AUTO_EDIT wizard, SHOOTING_GUIDE form + result), its Tkinter GUI/CLI, its desktop/ Electron desktop app shell (main.js/setup.js/electron-builder packaging), or its Windows install.bat/run.bat installer. Also use when the user asks in Korean or English to build/extend/debug "CapCut 자동 편집", "무음 컷", "버벅임/필러워드 컷", "자막 자동 생성", "화면 보정", "배경음/효과음", "훅 문구", "촬영 가이드/앵글/촬영 순서", a "pycapcut" automation, "데스크톱 앱"/"설치형 앱"/"Electron" packaging, or the webapp/backend integration, or reports install.bat/run.bat errors. Trigger even if they don't name the file paths directly - match on the task shape, not just exact keywords.
 ---
 
 # capcut-auto: pycapcut CapCut 자동 편집 엔진 + 웹앱
@@ -68,7 +68,7 @@ capcut_auto/
                           모듈로 추가함 - `/api/shooting-guide-v2`로 연결됨(webapp의
                           ShootingGuideScreen "새 방식" 토글). **MODE1 인계(continueToAutoEdit)는
                           아직 v1 스키마만 지원해서 v2 계획은 열람/체크리스트 전용**(알려진 한계)
-tests/                    401개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
+tests/                    407개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
                           test_*_integration.py는 실제 ffmpeg 있을 때만 돌아감(skipUnless).
                           ai_test_helpers.py는 진짜 네트워크 호출 없이 client.py를 검증하는
                           가짜(fake) Anthropic 클라이언트 - 모든 tests/test_ai_*.py가 공유함
@@ -88,6 +88,21 @@ webapp/
                                    "이 계획으로 영상 편집 시작" 버튼을 누르면 continueToAutoEdit(plan)으로
                                    MODE 1로 즉시 전환됨 (아래 "MODE 1 ↔ MODE 2 인계" 참고) - v2는 아직
                                    이 인계를 지원하지 않음
+  .env.development           npm run dev(vite 개발 서버)에서만 VITE_API_BASE=http://127.0.0.1:8000를
+                                   지정한다. 프로덕션 빌드(webapp/dist)는 server.py 자신이 프론트엔드까지
+                                   같은 오리진에서 서빙하므로 src/api/client.ts의 API_BASE가 상대경로(빈
+                                   문자열)로 자동 전환됨 - 데스크톱 앱이 포트에 상관없이 동작하게 하기 위함
+
+desktop/                    Electron 데스크톱 앱 셸 (Windows/Mac 설치형, 아래 "데스크톱 앱" 절 참고)
+  main.js                   Electron 메인 프로세스 - 로컬 uvicorn을 자식 프로세스로 띄우고 그 주소를
+                                   여는 창 하나만 보여줌. REPO_ROOT(앱 코드, 읽기전용일 수 있음)와
+                                   DATA_DIR(app.getPath('userData'), 쓰기 가능)를 구분해서 쓴다
+  setup.js                  최초 실행 시 venv 생성 + pip install(+Windows는 ffmpeg 자동 다운로드)을
+                                   Node로 재현. Electron 의존성 전혀 없는 순수 Node 코드라 Electron 없이도
+                                   단독 테스트 가능(실제로 이렇게 검증함 - 아래 "이미 검증된 사실" 참고)
+  package.json               electron-builder 설정(extraResources로 capcut_auto/+category-rules/+
+                                   webapp/dist를 패키징. .venv는 크고 이식성이 떨어져 번들하지 않음 -
+                                   대신 setup.js가 설치 후 첫 실행 시 만듦)
 ```
 
 ## capcut_auto/ai/ - AI 자동 편집 핵심 기능
@@ -357,6 +372,47 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**(
 `JobState`를 관리한다. 상태는 **프로세스 메모리에만** 있음 — 서버 재시작하면 진행 중이던 프로젝트가
 사라진다 (의도된 범위 제한, 로컬 1인 도구라 DB 없이 시작함).
 
+## 데스크톱 앱 (desktop/, Electron)
+
+`capcut_auto/server.py`는 `webapp/dist`(빌드 결과물)가 있으면 자기 자신이 정적 파일로 함께
+서빙하도록 구성돼 있다(`_maybe_mount_frontend`, 파일 맨 끝, 반드시 다른 `/api/...` 라우트보다
+뒤에 마운트해야 `/`가 API를 가리지 않음). 이 덕분에 `desktop/main.js`(Electron 메인 프로세스)는
+uvicorn 프로세스 하나만 자식으로 띄우고 그 주소(`http://127.0.0.1:<포트>/`)를 여는 창 하나만
+보여주면 전체 화면이 뜬다 - 별도 vite 서버가 필요 없다.
+
+핵심 설계:
+- **REPO_ROOT**(앱 코드 - `capcut_auto/`, `category-rules/`, `webapp/dist`)와 **DATA_DIR**
+  (`app.getPath('userData')`, 사용자별 쓰기 가능한 위치)를 분리한다. 패키징된 앱은 REPO_ROOT가
+  보통 Program Files 같은 읽기전용 위치이므로, `.venv`/ffmpeg 다운로드/서버 작업 폴더는 전부
+  DATA_DIR 아래에 만든다. `server.py`는 `CAPCUT_AUTO_STATE_DIR`(작업 폴더)와
+  `CAPCUT_AUTO_FFMPEG_DIR`(ffmpeg 번들 위치) 환경변수로 이 경로들을 오버라이드할 수 있게
+  확장해뒀다(둘 다 기존 상대경로 기본값은 그대로라 CLI/GUI/테스트에 영향 없음).
+- **`desktop/setup.js`**가 최초 실행 시 install.bat과 같은 일(venv 생성 → pip install,
+  Windows는 ffmpeg 자동 다운로드)을 Node로 재현한다. 이미 준비돼 있으면(실제 import 가능 여부를
+  서브프로세스로 확인) 매우 빠르게 건너뛴다. 이 파일은 **Electron API를 전혀 쓰지 않는 순수
+  Node 코드**라 Electron 없이도 통째로 테스트할 수 있다.
+- `resolvePythonExecutable`(setup.js 내부) 우선순위: DATA_DIR/.venv → REPO_ROOT/.venv(install.bat
+  으로 이미 저장소에 세팅된 개발 체크아웃을 그대로 쓰는 경우) → 시스템 PATH의 python/python3.
+
+**중요한 검증 한계**: 이 desktop/ 코드는 이번 세션에서 작성됐지만, `npm install`이 Electron
+바이너리를 GitHub에서 받으려다 이 개발 샌드박스의 프록시 정책에 **403으로 막혀**(허용 목록에
+`registry.npmjs.org`/`pypi.org`는 있지만 Electron이 실제 바이너리를 받아오는 별도 호스트는 없음)
+Electron 자체를 설치/실행해본 적이 없다. 대신 다음은 실제로 검증했다:
+1. `server.py`의 정적 파일 서빙(`_maybe_mount_frontend`) - 실제 `npm run build` + 실제 uvicorn +
+   Playwright로 "/"가 실제 화면을 띄우고 `/api/...`가 안 가려지는지 확인함.
+2. `desktop/setup.js`의 핵심 로직 - Electron 없이 순수 Node 스크립트로 실제 임시 디렉터리에
+   진짜 venv를 만들고 진짜 `pip install -r requirements.txt`(faster-whisper 제외한 나머지 전부:
+   fastapi/uvicorn/anthropic/jsonschema/opencv-python-headless/numpy/pycapcut)를 끝까지 실행해
+   `import capcut_auto.server`가 실제로 성공하는지 확인했고, 재실행 시 약 1초 만에 "이미 준비됨"
+   으로 건너뛰는 캐시 동작도 확인함.
+3. `desktop/main.js`(창 생성/프로세스 관리/종료 처리)는 Electron 공식 API를 정확히 따랐는지
+   코드 리뷰로만 확인했다 - **실제로 창이 뜨는지는 검증 못 함.**
+
+사용자가 "데스크톱 앱이 실제로 되나요?"라고 물으면 위 내용을 정직하게 알려주고, 실제
+Windows/Mac에서 `cd desktop && npm install && npm start`로 직접 확인해달라고 안내할 것.
+문제가 있으면 정확한 오류 메시지를 받아서 고치면 된다(설치 자체가 안 되는 시나리오는
+아직 아무도 겪어보지 못했다는 뜻이라 더더욱 실제 오류 메시지가 필요함).
+
 ## 이미 검증된 사실 (재조사 불필요)
 
 - **pycapcut 실제 API는 draft_builder.py와 정확히 일치함을 실제 설치해서 확인함** (자세한 시그니처는
@@ -459,7 +515,7 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**(
 
 ```bash
 # 1. 파이썬 순수 로직 전체 (항상 통과해야 함, ffmpeg/whisper/pycapcut 불필요)
-python3 -m unittest discover -s tests -v   # 401개 (opencv-python-headless==4.10.0.84 필요 -
+python3 -m unittest discover -s tests -v   # 407개 (opencv-python-headless==4.10.0.84 필요 -
                                             # visual/subject_detection.py용, 5.0.0은 cascade 데이터 없음)
 
 # 2. .bat 파일을 건드렸다면 CRLF/괄호 이스케이프 재확인 (위 1, 2번 참고)
@@ -491,6 +547,11 @@ import uvicorn; uvicorn.run(s.app, host='127.0.0.1', port=8000)
 
 - Windows에서 `install.bat`이 ffmpeg 다운로드 → GUI 실행까지 완전히 끝까지 성공한 것은 아직 사용자
   확인 전. CLI/GUI 경로와 웹앱/백엔드 경로는 서로 다른 설치 흐름이라는 점도 안내할 것
+- **`desktop/`(Electron 데스크톱 앱)는 이 개발 샌드박스가 Electron 바이너리 다운로드를 막고 있어서
+  Electron이 실제로 뜨는지, `npm run dist`로 만든 설치 파일이 실제로 동작하는지 전혀 검증 못 했다**
+  (위 "데스크톱 앱" 절 참고). 사용자가 물으면 이 사실을 그대로 알려주고, `cd desktop && npm install
+  && npm start`를 실제 Windows/Mac에서 실행해 확인해달라고 요청할 것 - 문제가 생기면 정확한 오류
+  메시지를 받아 그걸 근거로 고칠 것(추측으로 미리 고치지 말 것).
   (웹앱은 `pip install -r requirements.txt` + `uvicorn capcut_auto.server:app` + `npm install && npm run dev`
   둘 다 띄워야 함, 아직 원클릭 설치 스크립트 없음).
 - CapCut 드래프트 폴더 기본 경로(`default_capcut_drafts_dir()`)는 추정치. 실제 폴더가 다르면
