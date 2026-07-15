@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from capcut_auto.audio_mix import apply_sfx_at_cuts, ensure_bgm_library, ensure_sfx_library, mix_bgm
+from capcut_auto.audio_mix import apply_multiple_sfx, apply_sfx_at_cuts, ensure_bgm_library, ensure_sfx_library, mix_bgm
 from capcut_auto.timeline import Interval
 
 FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
@@ -88,6 +88,29 @@ class TestAudioMixIntegration(unittest.TestCase):
 
             self.assertTrue(Path(out_path).exists())
             self.assertGreater(Path(out_path).stat().st_size, 0)
+
+    def test_apply_multiple_sfx_with_distinct_assets_produces_video(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "in.mp4")
+            _make_video_with_tone(video_path)
+            sfx = ensure_sfx_library(str(Path(tmp) / "sfx"))
+
+            # 서로 다른 시각에 같은 소스를 각기 다른 "효과음"인 것처럼 두 번 배치해도
+            # 실제 ffmpeg가 여러 입력을 처리할 수 있는지 확인 (실제 sfx_recommend.py는
+            # 서로 다른 파일을 넘김)
+            out_path = str(Path(tmp) / "out.mp4")
+            apply_multiple_sfx(video_path, out_path, [(0.5, sfx["pop"]), (2.5, sfx["pop"])])
+
+            self.assertTrue(Path(out_path).exists())
+            self.assertGreater(Path(out_path).stat().st_size, 0)
+
+    def test_apply_multiple_sfx_with_no_placements_copies_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "in.mp4")
+            _make_video_with_tone(video_path)
+            out_path = str(Path(tmp) / "out.mp4")
+            apply_multiple_sfx(video_path, out_path, [])
+            self.assertTrue(Path(out_path).exists())
 
     def test_apply_sfx_at_cuts_with_no_cut_points_copies_input(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .bgm_recommend import BgmMetadataRecommendation
 from .categories import ContentCategory
+from .sfx_recommend import SfxRecommendation
 from .subtitles import SubtitleLine
 from .timeline import Interval
 from .transcribe import Word
@@ -67,6 +69,8 @@ class Project:
     bgm_volume: float = 0.18
     sfx_enabled: bool = True
     audio_output_path: Optional[str] = None
+    sfx_recommendations: List[SfxRecommendation] = field(default_factory=list)
+    bgm_recommendation: Optional[BgmMetadataRecommendation] = None
 
     draft_name: Optional[str] = None
 

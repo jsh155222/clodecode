@@ -21,6 +21,7 @@ from capcut_auto.timeline import Interval
 from capcut_auto.transcribe import Word
 from capcut_auto.visual_correction import BrightnessStats, CorrectionParams, VisualCorrectionResult
 from capcut_auto.audio_mix import BgmTrack
+from capcut_auto.sfx_recommend import SfxAsset, SfxPurpose
 
 
 def _wait_until(predicate, timeout=2.0, interval=0.02):
@@ -235,6 +236,17 @@ class TestHooksAndSubtitles(ServerTestCase):
 
 
 class TestAudio(ServerTestCase):
+    def _analyzed_project(self, words=None):
+        project = self._create_project(category="FOOD")
+        words = words if words is not None else [Word(0.5, 0.8, "어"), Word(1.0, 1.4, "안녕하세요")]
+        with mock.patch.object(server_mod.silence_mod, "get_duration", return_value=10.0), \
+             mock.patch.object(server_mod.silence_mod, "extract_audio", return_value="/tmp/a.wav"), \
+             mock.patch.object(server_mod.silence_mod, "detect_silence", return_value=[Interval(2.0, 5.0)]), \
+             mock.patch.object(server_mod, "transcribe_audio", return_value=words):
+            self.client.post(f"/api/projects/{project['id']}/analyze")
+            _wait_until(lambda: self.client.get(f"/api/projects/{project['id']}/analyze").json()["status"] != "running")
+        return project
+
     def test_bgm_library_lists_tracks(self):
         project = self._create_project()
         fake_library = {
@@ -267,6 +279,160 @@ class TestAudio(ServerTestCase):
             self.assertEqual(status["status"], "done")
             mix_mock.assert_called_once()
             sfx_mock.assert_called_once()
+
+    def test_mix_bgm_receives_voice_intervals_and_duck_ratio_from_recommendation(self):
+        project = self._analyzed_project(words=[Word(1.0, 1.5, "안녕"), Word(2.0, 2.4, "하세요")])
+        fake_library = {"neutral": BgmTrack(mood="neutral", label="기본", path="/tmp/neutral.m4a")}
+        with mock.patch.object(server_mod.audio_mix_mod, "ensure_bgm_library", return_value=fake_library), \
+             mock.patch.object(server_mod.audio_mix_mod, "mix_bgm", return_value="/tmp/mixed.mp4") as mix_mock, \
+             mock.patch.object(server_mod.audio_mix_mod, "ensure_sfx_library", return_value={"pop": "/tmp/pop.m4a"}), \
+             mock.patch.object(server_mod.audio_mix_mod, "apply_sfx_at_cuts", return_value="/tmp/final.mp4"):
+            start = self.client.post(f"/api/projects/{project['id']}/audio")
+            self.assertEqual(start.status_code, 200)
+            _wait_until(lambda: self.client.get(f"/api/projects/{project['id']}/audio").json()["status"] != "running")
+
+            mix_mock.assert_called_once()
+            _args, kwargs = mix_mock.call_args
+            self.assertIn(Interval(1.0, 1.5), kwargs["voice_intervals"])
+            self.assertIn(Interval(2.0, 2.4), kwargs["voice_intervals"])
+            self.assertGreater(kwargs["duck_volume_ratio"], 0)
+
+    def test_audio_job_uses_approved_sfx_placements_instead_of_flat_pop(self):
+        project = self._analyzed_project()
+        proj_obj = server_mod.store.get(project["id"])
+        proj_obj.sfx_recommendations = [
+            _make_sfx_recommendation(time=1.0, asset_id="soft_reveal_1", approved=True),
+            _make_sfx_recommendation(time=4.0, asset_id="soft_whoosh_1", approved=False),  # 미승인 - 제외되어야 함
+        ]
+
+        fake_library = {"neutral": BgmTrack(mood="neutral", label="기본", path="/tmp/neutral.m4a")}
+        with mock.patch.object(server_mod.audio_mix_mod, "ensure_bgm_library", return_value=fake_library), \
+             mock.patch.object(server_mod.audio_mix_mod, "mix_bgm", return_value="/tmp/mixed.mp4"), \
+             mock.patch.object(server_mod.audio_mix_mod, "apply_sfx_at_cuts") as flat_sfx_mock, \
+             mock.patch.object(server_mod.audio_mix_mod, "apply_multiple_sfx", return_value="/tmp/final.mp4") as multi_mock:
+            start = self.client.post(f"/api/projects/{project['id']}/audio")
+            self.assertEqual(start.status_code, 200)
+            _wait_until(lambda: self.client.get(f"/api/projects/{project['id']}/audio").json()["status"] != "running")
+
+            multi_mock.assert_called_once()
+            placements = multi_mock.call_args[0][2]
+            self.assertEqual(len(placements), 1)  # 승인된 것 하나만
+            self.assertEqual(placements[0][0], 1.0)
+            self.assertIn("soft_reveal_1", placements[0][1])
+            flat_sfx_mock.assert_not_called()
+
+
+def _make_sfx_recommendation(time, asset_id, approved):
+    from capcut_auto.sfx_recommend import SfxCandidate, SfxRecommendation
+
+    asset = SfxAsset(id=asset_id, purpose=SfxPurpose.RESULT_REVEAL, label=asset_id, path=f"/tmp/{asset_id}.m4a")
+    rec = SfxRecommendation(
+        time=time,
+        purpose=SfxPurpose.RESULT_REVEAL,
+        candidates=[SfxCandidate(asset=asset, reason="테스트")],
+    )
+    rec.approved = approved
+    rec.selected_asset_id = asset_id if approved else None
+    return rec
+
+
+class TestBgmRecommendationEndpoint(ServerTestCase):
+    def test_bgm_recommendation_has_no_fabricated_commercial_info(self):
+        project = self._create_project(category="FOOD")
+        response = self.client.get(f"/api/projects/{project['id']}/bgm-recommendation")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        for forbidden in ("title", "artist", "copyright", "trending"):
+            self.assertNotIn(forbidden, "".join(body.keys()).lower())
+        self.assertFalse(body["hasVocals"])
+        self.assertTrue(body["duckDuringVoice"])
+        self.assertGreater(len(body["searchKeywords"]), 0)
+
+    def test_preserve_natural_audio_category_gets_lower_energy(self):
+        project = self._create_project(category="FOOD")  # food.json: preserveNaturalAudio=true
+        response = self.client.get(f"/api/projects/{project['id']}/bgm-recommendation").json()
+        self.assertEqual(response["energy"], "LOW")
+
+    def test_no_category_falls_back_to_neutral(self):
+        project = self._create_project(category=None)
+        response = self.client.get(f"/api/projects/{project['id']}/bgm-recommendation").json()
+        self.assertEqual(response["mood"], "neutral")
+
+
+class TestSfxSuggestionsEndpoint(ServerTestCase):
+    def _analyzed_project(self):
+        project = self._create_project(category="LIVING")
+        words = [Word(0.5, 0.8, "어"), Word(1.0, 1.4, "안녕하세요")]
+        with mock.patch.object(server_mod.silence_mod, "get_duration", return_value=20.0), \
+             mock.patch.object(server_mod.silence_mod, "extract_audio", return_value="/tmp/a.wav"), \
+             mock.patch.object(server_mod.silence_mod, "detect_silence", return_value=[]), \
+             mock.patch.object(server_mod, "transcribe_audio", return_value=words):
+            self.client.post(f"/api/projects/{project['id']}/analyze")
+            _wait_until(lambda: self.client.get(f"/api/projects/{project['id']}/analyze").json()["status"] != "running")
+        return project
+
+    def _fake_sfx_library(self):
+        return {
+            SfxPurpose.RESULT_REVEAL: [SfxAsset("soft_reveal_1", SfxPurpose.RESULT_REVEAL, "결과 공개음", "/tmp/r1.m4a")],
+            SfxPurpose.BUILD_UP: [SfxAsset("build_up_1", SfxPurpose.BUILD_UP, "궁금증 유발음", "/tmp/b1.m4a")],
+        }
+
+    def test_requires_analysis_before_suggesting(self):
+        project = self._create_project()
+        response = self.client.get(f"/api/projects/{project['id']}/sfx-suggestions")
+        self.assertEqual(response.status_code, 400)
+
+    def test_returns_recommendations_after_analysis(self):
+        project = self._analyzed_project()
+        with mock.patch.object(server_mod.sfx_recommend_mod, "ensure_sfx_asset_library", return_value=self._fake_sfx_library()):
+            response = self.client.get(f"/api/projects/{project['id']}/sfx-suggestions")
+        self.assertEqual(response.status_code, 200)
+        recs = response.json()["recommendations"]
+        self.assertGreater(len(recs), 0)
+        self.assertTrue(all("candidates" in r and len(r["candidates"]) > 0 for r in recs))
+        self.assertTrue(all(r["candidates"][0]["previewUrl"].startswith("/api/sfx-preview/") for r in recs))
+
+    def test_decision_patch_updates_approval_and_selection(self):
+        project = self._analyzed_project()
+        with mock.patch.object(server_mod.sfx_recommend_mod, "ensure_sfx_asset_library", return_value=self._fake_sfx_library()):
+            recs = self.client.get(f"/api/projects/{project['id']}/sfx-suggestions").json()["recommendations"]
+        self.assertGreater(len(recs), 0)
+        target = recs[0]
+        asset_id = target["candidates"][0]["assetId"]
+
+        response = self.client.patch(
+            f"/api/projects/{project['id']}/sfx-suggestions",
+            json={"time": target["time"], "approved": True, "selectedAssetId": asset_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        updated = next(r for r in response.json()["recommendations"] if r["time"] == target["time"])
+        self.assertTrue(updated["approved"])
+        self.assertEqual(updated["selectedAssetId"], asset_id)
+
+    def test_decision_patch_unknown_time_returns_404(self):
+        project = self._analyzed_project()
+        response = self.client.patch(
+            f"/api/projects/{project['id']}/sfx-suggestions",
+            json={"time": 9999.0, "approved": True, "selectedAssetId": "x"},
+        )
+        self.assertEqual(response.status_code, 404)
+
+
+class TestSfxPreviewEndpoint(ServerTestCase):
+    def test_missing_asset_returns_404(self):
+        response = self.client.get("/api/sfx-preview/does_not_exist")
+        self.assertEqual(response.status_code, 404)
+
+    def test_existing_asset_is_served(self):
+        preview_dir = Path(server_mod._shared_sfx_v2_dir)
+        preview_dir.mkdir(parents=True, exist_ok=True)
+        (preview_dir / "fake_asset.m4a").write_bytes(b"fake audio bytes")
+        try:
+            response = self.client.get("/api/sfx-preview/fake_asset")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b"fake audio bytes")
+        finally:
+            (preview_dir / "fake_asset.m4a").unlink(missing_ok=True)
 
 
 class TestExport(ServerTestCase):

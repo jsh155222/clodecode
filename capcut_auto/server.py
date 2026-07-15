@@ -19,15 +19,20 @@ from typing import List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from . import audio_mix as audio_mix_mod
+from . import bgm_recommend as bgm_recommend_mod
+from . import category_rules as category_rules_mod
 from . import cutlist as cutlist_mod
 from . import draft_builder
+from . import sfx_recommend as sfx_recommend_mod
 from . import silence as silence_mod
 from . import stutter as stutter_mod
 from . import subtitles as subtitles_mod
 from . import visual_correction as visual_correction_mod
+from .ai.video_structure import VideoSection, VideoSectionRole
 from .categories import CATEGORY_LABELS, ContentCategory, get_rule
 from .hooks import generate_hook_suggestions
 from .project_store import CutCandidate, Project, ProjectStore
@@ -40,6 +45,7 @@ APP_STATE_DIR = Path("capcut_auto_server_work")
 store = ProjectStore(str(APP_STATE_DIR / "projects"))
 _shared_bgm_dir = str(APP_STATE_DIR / "shared_bgm")
 _shared_sfx_dir = str(APP_STATE_DIR / "shared_sfx")
+_shared_sfx_v2_dir = str(APP_STATE_DIR / "shared_sfx_v2")
 
 app = FastAPI(title="capcut-auto backend")
 
@@ -87,6 +93,56 @@ def _cut_transition_points(project: Project) -> List[float]:
         cursor += iv.duration
         points.append(cursor)
     return points
+
+
+def _original_timeline_cut_boundaries(project: Project) -> List[float]:
+    """원본(컷 반영 전) 영상 시간 기준 컷 경계.
+
+    _cut_transition_points()는 압축된(컷 이후) 타임라인 기준 누적 길이라서, 이 단계의
+    오디오 작업이 실제로 다루는 원본 길이 그대로의 비디오 파일(visual_correction 결과 -
+    CapCut 드래프트만 keep_intervals로 실제 트리밍하고, 그 전 단계 mp4들은 전부 원본
+    길이 그대로다)에 그 값을 그대로 쓰면 두 번째 컷부터 위치가 어긋난다. 효과음 추천
+    섹션은 원본 시간 기준이어야 하므로 별도로 계산한다.
+    """
+    return [iv.end for iv in project.keep_intervals[:-1]]
+
+
+def _heuristic_video_sections(project: Project) -> List[VideoSection]:
+    """실제 AI 영상 구조 분석(ai/video_structure.py) 없이도 효과음 추천이 동작하도록 만든
+    규칙 기반 근사치. HOOK/RESULT는 영상 처음·끝 일부, TRANSITION은 각 컷 경계다.
+    ANTHROPIC_API_KEY가 없어도 항상 동작하도록 이 서버의 다른 3/4/6단계와 같은 방식
+    (규칙 기반)으로 만들었다 - "영상 내용을 이해해서" 정확히 분류한 것은 아니라는 한계가 있다.
+    """
+    duration = project.total_duration or 0.0
+    if duration <= 0:
+        return []
+    edge = min(3.0, duration / 3)
+    sections = [
+        VideoSection(0.0, edge, VideoSectionRole.HOOK, ""),
+        VideoSection(max(edge, duration - edge), duration, VideoSectionRole.RESULT, ""),
+    ]
+    for t in _original_timeline_cut_boundaries(project):
+        sections.append(VideoSection(max(0.0, t - 0.2), min(duration, t + 0.2), VideoSectionRole.TRANSITION, ""))
+    return sections
+
+
+def _sfx_recommendation_to_dict(rec: "sfx_recommend_mod.SfxRecommendation") -> dict:
+    return {
+        "time": rec.time,
+        "purpose": rec.purpose.value,
+        "purposeLabel": rec.purpose.label,
+        "candidates": [
+            {
+                "assetId": c.asset.id,
+                "label": c.asset.label,
+                "reason": c.reason,
+                "previewUrl": f"/api/sfx-preview/{c.asset.id}",
+            }
+            for c in rec.candidates
+        ],
+        "selectedAssetId": rec.selected_asset_id,
+        "approved": rec.approved,
+    }
 
 
 def _project_summary(project: Project) -> dict:
@@ -350,18 +406,41 @@ def _run_audio_job(project: Project) -> None:
         base_video = project.correction_result.output_path if project.correction_result else project.video_path
 
         library = audio_mix_mod.ensure_bgm_library(_shared_bgm_dir)
-        mood = project.bgm_mood or (get_rule(project.category).default_bgm_mood if project.category else "neutral")
+        rule_set = category_rules_mod.load_category_rule_set(project.category) if project.category else None
+        bgm_rec = project.bgm_recommendation or bgm_recommend_mod.recommend_bgm_metadata(project.category, rule_set)
+        mood = project.bgm_mood or bgm_rec.mood
         track = library.get(mood) or library.get("neutral") or next(iter(library.values()))
 
+        # project.words는 컷 반영 전(원본) 타임라인 그대로다 - 이 단계에서 다루는 mp4도
+        # 항상 원본 길이 그대로(실제 트리밍은 마지막 CapCut 내보내기에서만 일어남)라서
+        # 발화 구간 좌표가 그대로 맞는다.
+        voice_intervals = [Interval(w.start, w.end) for w in project.words] if project.words else []
+
         mixed_path = str(Path(project.workdir) / "audio_bgm.mp4")
-        audio_mix_mod.mix_bgm(base_video, track.path, mixed_path, bgm_volume=project.bgm_volume)
+        audio_mix_mod.mix_bgm(
+            base_video,
+            track.path,
+            mixed_path,
+            bgm_volume=project.bgm_volume,
+            voice_intervals=voice_intervals,
+            duck_volume_ratio=bgm_rec.duck_volume_ratio,
+        )
 
         final_path = mixed_path
         if project.sfx_enabled:
-            sfx_lib = audio_mix_mod.ensure_sfx_library(_shared_sfx_dir)
-            cut_points = _cut_transition_points(project)
             sfx_out = str(Path(project.workdir) / "audio_final.mp4")
-            audio_mix_mod.apply_sfx_at_cuts(mixed_path, sfx_out, cut_points, sfx_lib["pop"])
+            approved_placements = sfx_recommend_mod.apply_approved_sfx(project.sfx_recommendations)
+            if approved_placements:
+                placements = [
+                    (p.time, str(Path(_shared_sfx_v2_dir) / f"{p.asset_id}.m4a")) for p in approved_placements
+                ]
+                audio_mix_mod.apply_multiple_sfx(mixed_path, sfx_out, placements)
+            else:
+                # 아직 효과음 추천을 받지 않았거나 하나도 승인하지 않았다면 기존 방식대로
+                # 컷 전환마다 짧은 pop 소리를 넣는다 (하위 호환 기본 동작).
+                sfx_lib = audio_mix_mod.ensure_sfx_library(_shared_sfx_dir)
+                cut_points = _cut_transition_points(project)
+                audio_mix_mod.apply_sfx_at_cuts(mixed_path, sfx_out, cut_points, sfx_lib["pop"])
             final_path = sfx_out
 
         project.audio_output_path = final_path
@@ -376,6 +455,73 @@ def get_bgm_library(project_id: str):
     _get_project_or_404(project_id)
     library = audio_mix_mod.ensure_bgm_library(_shared_bgm_dir)
     return {"tracks": [{"mood": t.mood, "label": t.label} for t in library.values()]}
+
+
+@app.get("/api/projects/{project_id}/bgm-recommendation")
+def get_bgm_recommendation(project_id: str):
+    project = _get_project_or_404(project_id)
+    rule_set = category_rules_mod.load_category_rule_set(project.category) if project.category else None
+    rec = bgm_recommend_mod.recommend_bgm_metadata(project.category, rule_set)
+    project.bgm_recommendation = rec
+    return {
+        "mood": rec.mood,
+        "moodLabel": rec.mood_label,
+        "tempoRangeBpm": list(rec.tempo_range_bpm),
+        "energy": rec.energy.value,
+        "energyLabel": rec.energy.label,
+        "hasVocals": rec.has_vocals,
+        "searchKeywords": rec.search_keywords,
+        "duckDuringVoice": rec.duck_during_voice,
+        "duckVolumeRatio": rec.duck_volume_ratio,
+    }
+
+
+@app.get("/api/projects/{project_id}/sfx-suggestions")
+def get_sfx_suggestions(project_id: str):
+    project = _get_project_or_404(project_id)
+    if project.total_duration is None:
+        raise HTTPException(status_code=400, detail="먼저 3단계 분석을 완료해야 합니다.")
+
+    rule_set = category_rules_mod.load_category_rule_set(project.category) if project.category else None
+    sections = _heuristic_video_sections(project)
+    library = sfx_recommend_mod.ensure_sfx_asset_library(_shared_sfx_v2_dir)
+    recommendations = sfx_recommend_mod.recommend_sfx_for_scenes(
+        sections,
+        project.words,
+        protected_intervals=[],
+        category=project.category,
+        category_rule_set=rule_set,
+        library=library,
+    )
+    project.sfx_recommendations = recommendations
+    return {"recommendations": [_sfx_recommendation_to_dict(r) for r in recommendations]}
+
+
+class SfxDecisionRequest(BaseModel):
+    time: float
+    approved: bool
+    selectedAssetId: Optional[str] = None
+
+
+@app.patch("/api/projects/{project_id}/sfx-suggestions")
+def update_sfx_decision(project_id: str, body: SfxDecisionRequest):
+    project = _get_project_or_404(project_id)
+    for rec in project.sfx_recommendations:
+        if abs(rec.time - body.time) < 1e-6:
+            rec.approved = body.approved
+            rec.selected_asset_id = body.selectedAssetId
+            break
+    else:
+        raise HTTPException(status_code=404, detail="해당 효과음 추천을 찾을 수 없습니다.")
+    return {"recommendations": [_sfx_recommendation_to_dict(r) for r in project.sfx_recommendations]}
+
+
+@app.get("/api/sfx-preview/{asset_id}")
+def get_sfx_preview(asset_id: str):
+    path = Path(_shared_sfx_v2_dir) / f"{asset_id}.m4a"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="효과음 파일을 찾을 수 없습니다.")
+    return FileResponse(str(path), media_type="audio/mp4")
 
 
 @app.patch("/api/projects/{project_id}/audio-settings")

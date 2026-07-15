@@ -99,6 +99,34 @@ export interface BgmTrackDto {
   label: string
 }
 
+export interface BgmRecommendationDto {
+  mood: string
+  moodLabel: string
+  tempoRangeBpm: [number, number]
+  energy: 'LOW' | 'MEDIUM' | 'HIGH'
+  energyLabel: string
+  hasVocals: boolean
+  searchKeywords: string[]
+  duckDuringVoice: boolean
+  duckVolumeRatio: number
+}
+
+export interface SfxCandidateDto {
+  assetId: string
+  label: string
+  reason: string
+  previewUrl: string
+}
+
+export interface SfxRecommendationDto {
+  time: number
+  purpose: string
+  purposeLabel: string
+  candidates: SfxCandidateDto[]
+  selectedAssetId: string | null
+  approved: boolean
+}
+
 export interface ExportStatus extends JobStatus {
   draftName: string | null
 }
@@ -158,6 +186,30 @@ export function selectHook(id: string, hook: string): Promise<{ selectedHook: st
 
 export function getBgmLibrary(id: string): Promise<{ tracks: BgmTrackDto[] }> {
   return request(`/api/projects/${id}/bgm-library`)
+}
+
+export function getBgmRecommendation(id: string): Promise<BgmRecommendationDto> {
+  return request(`/api/projects/${id}/bgm-recommendation`)
+}
+
+export function getSfxSuggestions(id: string): Promise<{ recommendations: SfxRecommendationDto[] }> {
+  return request(`/api/projects/${id}/sfx-suggestions`)
+}
+
+export function updateSfxDecision(
+  id: string,
+  time: number,
+  approved: boolean,
+  selectedAssetId: string | null,
+): Promise<{ recommendations: SfxRecommendationDto[] }> {
+  return request(`/api/projects/${id}/sfx-suggestions`, {
+    method: 'PATCH',
+    body: JSON.stringify({ time, approved, selectedAssetId }),
+  })
+}
+
+export function sfxPreviewUrl(previewUrl: string): string {
+  return `${API_BASE}${previewUrl}`
 }
 
 export function updateAudioSettings(

@@ -13,7 +13,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Sequence
+from typing import Dict, Optional, Sequence, Tuple
 
 from .silence import require_binary
 from .timeline import Interval
@@ -147,6 +147,58 @@ def mix_bgm(
         str(video_path),
         "-i",
         str(bgm_path),
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "0:v",
+        "-map",
+        "[aout]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        str(output_path),
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
+    return output_path
+
+
+def apply_multiple_sfx(
+    video_path: str,
+    output_path: str,
+    placements: Sequence[Tuple[float, str]],
+    sfx_volume: float = 0.6,
+) -> str:
+    """서로 다른 효과음 파일을 각자 다른 시각(초)에 겹쳐 넣는다.
+
+    apply_sfx_at_cuts()는 컷마다 항상 같은 소리(pop) 하나만 반복하지만, 이 함수는
+    sfx_recommend.py의 장면별 추천처럼 (시각, 효과음 파일 경로) 쌍이 서로 다를 수 있는
+    경우를 위한 것이다. placements가 비어 있으면 원본을 그대로 복사한다.
+    """
+    ffmpeg_bin = require_binary("ffmpeg")
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    if not placements:
+        shutil.copy(video_path, output_path)
+        return output_path
+
+    cmd = [ffmpeg_bin, "-y", "-i", str(video_path)]
+    for _time, sfx_path in placements:
+        cmd += ["-i", str(sfx_path)]
+
+    filter_parts = []
+    delayed_labels = []
+    for i, (t, _sfx_path) in enumerate(placements):
+        delay_ms = max(0, int(round(t * 1000)))
+        label = f"sfx{i}"
+        filter_parts.append(f"[{i + 1}:a]adelay={delay_ms}|{delay_ms},volume={sfx_volume}[{label}]")
+        delayed_labels.append(f"[{label}]")
+
+    mix_inputs = "[0:a]" + "".join(delayed_labels)
+    filter_parts.append(f"{mix_inputs}amix=inputs={len(delayed_labels) + 1}:duration=first:dropout_transition=0[aout]")
+    filter_complex = ";".join(filter_parts)
+
+    cmd += [
         "-filter_complex",
         filter_complex,
         "-map",
