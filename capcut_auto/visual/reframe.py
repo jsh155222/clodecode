@@ -1,14 +1,27 @@
 """9:16 자동 리프레이밍 + 자연스러운 줌.
 
-순수 기하 계산만 한다 (실제 렌더링은 export 단계에서 pycapcut의 키프레임으로 적용).
+기하 계산(compute_crop_window/smooth_crop_path)은 순수 함수다. 실제 화면에 적용하는
+render_static_crop()/render_crop_preview_image()는 real ffmpeg crop+scale로 렌더링한다.
+
+pycapcut의 ClipSettings(scale_x/scale_y/transform_x/transform_y)로 CapCut 드래프트
+안에 직접 크롭을 넣는 방법도 있었지만, 이 환경에는 실제 CapCut이 없어 그 변환 수식이
+CapCut에서 실제로 어떻게 보이는지 검증할 방법이 없다(SKILL.md에 이미 기록된 한계와 같은
+문제). 대신 ffmpeg로 실제 크롭된 mp4를 미리 렌더링해 그 결과를 육안/파일로 직접 검증할 수
+있는 방식을 택했다 - visual_correction.py의 밝기/흔들림 보정과 같은 접근이다. 다만 이
+방식은 영상 전체에 하나의 정적(static) 크롭만 적용하고, smooth_crop_path()가 계산하는
+프레임별 동적 팬/줌까지 실제 렌더링에 반영하지는 않는다(문서화된 범위 축소).
+
 모든 화면 보정은 사용자 검토 후 적용한다 - apply_approved_reframe()이 그 게이트 역할을 한다.
 """
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from ..silence import require_binary
 from .subject_detection import BoundingBox
 
 DEFAULT_TARGET_ASPECT = 9 / 16
@@ -174,3 +187,62 @@ def apply_approved_reframe(plan: ReframePlan) -> Optional[ReframePlan]:
     if not plan.approved:
         return None
     return plan
+
+
+def _crop_filter(crop: CropWindow, target_width: int, target_height: int) -> str:
+    x, y = int(round(crop.x)), int(round(crop.y))
+    w, h = int(round(crop.width)), int(round(crop.height))
+    return f"crop={w}:{h}:{x}:{y},scale={target_width}:{target_height}"
+
+
+def render_static_crop(
+    video_path: str,
+    crop: CropWindow,
+    output_path: str,
+    target_width: int = 1080,
+    target_height: int = 1920,
+) -> str:
+    """승인된 CropWindow 하나를 영상 전체에 실제로 적용해 9:16 mp4를 렌더링한다."""
+    ffmpeg_bin = require_binary("ffmpeg")
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i",
+        str(video_path),
+        "-vf",
+        _crop_filter(crop, target_width, target_height),
+        "-c:a",
+        "copy",
+        str(output_path),
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
+    return output_path
+
+
+def render_crop_preview_image(
+    video_path: str,
+    crop: CropWindow,
+    output_path: str,
+    sample_time: float,
+    preview_width: int = 270,
+    preview_height: int = 480,
+) -> str:
+    """사용자가 승인 전에 미리 볼 수 있는 크롭 결과 이미지 한 장을 실제로 렌더링한다."""
+    ffmpeg_bin = require_binary("ffmpeg")
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-ss",
+        str(max(0.0, sample_time)),
+        "-i",
+        str(video_path),
+        "-frames:v",
+        "1",
+        "-vf",
+        _crop_filter(crop, preview_width, preview_height),
+        str(output_path),
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
+    return output_path

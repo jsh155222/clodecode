@@ -19,6 +19,7 @@ from .sfx_recommend import SfxRecommendation
 from .subtitles import SubtitleLine
 from .timeline import Interval
 from .transcribe import Word
+from .visual.reframe import CropWindow
 from .visual_correction import VisualCorrectionResult
 
 
@@ -64,6 +65,10 @@ class Project:
 
     correction_result: Optional[VisualCorrectionResult] = None
     stabilize_enabled: bool = True
+    reframe_crop: Optional[CropWindow] = None
+    reframe_approved: bool = False
+    reframe_preview_path: Optional[str] = None
+    reframe_face_detected: bool = False
 
     bgm_mood: Optional[str] = None
     bgm_volume: float = 0.18

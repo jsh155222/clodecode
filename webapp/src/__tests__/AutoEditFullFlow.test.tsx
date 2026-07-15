@@ -51,6 +51,14 @@ vi.mock('../api/client', () => ({
     keptDuration: cutId === 'c1' && !enabled ? 10 : 7,
     totalDuration: 10,
   })),
+  getReframeSuggestion: vi.fn(async () => ({
+    crop: { x: 0, y: 0, width: 600, height: 1080, zoom: 1.0, subjectFullyContained: true },
+    faceDetected: false,
+    previewUrl: '/api/projects/proj1/reframe-preview',
+    approved: false,
+  })),
+  updateReframeApproval: vi.fn(async (_id: string, approved: boolean) => ({ approved })),
+  reframePreviewUrl: (url: string) => `http://127.0.0.1:8000${url}`,
   startCorrection: vi.fn(async () => ({ status: 'running' })),
   getCorrectionStatus: vi.fn(async () => ({
     status: 'done',

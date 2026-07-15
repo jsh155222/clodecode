@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 from .timeline import Interval
 
@@ -50,6 +50,27 @@ def get_duration(media_path: str) -> float:
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     data = json.loads(result.stdout)
     return float(data["format"]["duration"])
+
+
+def get_video_resolution(video_path: str) -> Tuple[int, int]:
+    """ffprobe로 영상의 (width, height)를 조회한다."""
+    ffprobe_bin = require_binary("ffprobe")
+    cmd = [
+        ffprobe_bin,
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    data = json.loads(result.stdout)
+    stream = data["streams"][0]
+    return int(stream["width"]), int(stream["height"])
 
 
 def extract_audio(video_path: str, out_path: str, sample_rate: int = 16000) -> str:

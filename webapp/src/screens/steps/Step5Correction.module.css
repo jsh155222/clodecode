@@ -11,3 +11,45 @@
   width: 22px;
   height: 22px;
 }
+
+.sectionTitle {
+  font-size: var(--font-title);
+  font-weight: 700;
+  margin: var(--section-gap-min) 0 12px;
+}
+
+.reframeBox {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 16px;
+  flex-wrap: wrap;
+}
+
+.reframePreviewImage {
+  width: 120px;
+  height: 213px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--color-bg);
+  flex-shrink: 0;
+}
+
+.reframeInfo {
+  flex: 1;
+  min-width: 200px;
+}
+
+.reframeHint {
+  margin: 0 0 8px;
+  font-size: var(--font-label);
+  color: var(--color-text-muted);
+}
+
+.reframeWarning {
+  margin: 0 0 8px;
+  font-size: var(--font-label);
+  color: var(--color-warning);
+}

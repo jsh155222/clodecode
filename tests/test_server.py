@@ -22,6 +22,7 @@ from capcut_auto.transcribe import Word
 from capcut_auto.visual_correction import BrightnessStats, CorrectionParams, VisualCorrectionResult
 from capcut_auto.audio_mix import BgmTrack
 from capcut_auto.sfx_recommend import SfxAsset, SfxPurpose
+from capcut_auto.visual.reframe import CropWindow
 
 
 def _wait_until(predicate, timeout=2.0, interval=0.02):
@@ -197,6 +198,115 @@ class TestVisualCorrection(ServerTestCase):
             self.assertEqual(result["status"], "done")
             self.assertEqual(result["brightness"], 0.1)
             self.assertTrue(result["stabilized"])
+
+    def test_correction_applies_approved_crop_before_auto_correct(self):
+        project = self._create_project()
+        crop = CropWindow(x=10.0, y=0.0, width=600.0, height=1080.0, zoom=1.0, subject_fully_contained=True)
+        proj_obj = server_mod.store.get(project["id"])
+        proj_obj.reframe_crop = crop
+        proj_obj.reframe_approved = True
+
+        fake_result = VisualCorrectionResult(
+            output_path="/tmp/corrected.mp4",
+            brightness_stats=BrightnessStats(mean_luma=60.0, stddev_luma=10.0, sample_count=30),
+            correction_params=CorrectionParams(brightness=0.0, contrast=1.0),
+            stabilized=False,
+        )
+        with mock.patch.object(server_mod.reframe_mod, "render_static_crop", return_value="/tmp/reframed.mp4") as crop_mock, \
+             mock.patch.object(server_mod.visual_correction_mod, "auto_correct", return_value=fake_result) as correct_mock:
+            self.client.post(f"/api/projects/{project['id']}/correction", json={"stabilize": False})
+            _wait_until(
+                lambda: self.client.get(f"/api/projects/{project['id']}/correction").json()["status"] != "running"
+            )
+            crop_mock.assert_called_once()
+            self.assertEqual(crop_mock.call_args[0][0], proj_obj.video_path)
+            self.assertEqual(crop_mock.call_args[0][1], crop)
+            correct_mock.assert_called_once()
+            expected_cropped_path = str(Path(proj_obj.workdir) / "reframed.mp4")
+            self.assertEqual(correct_mock.call_args[0][0], expected_cropped_path)
+
+
+class TestReframeEndpoints(ServerTestCase):
+    def test_suggestion_returns_crop_and_preview_url(self):
+        project = self._create_project()
+        with mock.patch.object(server_mod.silence_mod, "get_video_resolution", return_value=(1920, 1080)), \
+             mock.patch.object(server_mod.silence_mod, "get_duration", return_value=10.0), \
+             mock.patch.object(server_mod, "extract_frame_at"), \
+             mock.patch.object(server_mod.subject_detection_mod, "detect_faces", return_value=[]), \
+             mock.patch.object(server_mod.reframe_mod, "render_crop_preview_image", return_value="/tmp/preview.jpg"):
+            response = self.client.get(f"/api/projects/{project['id']}/reframe-suggestion")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("crop", body)
+        self.assertFalse(body["faceDetected"])
+        self.assertFalse(body["approved"])
+        self.assertTrue(body["previewUrl"].endswith("/reframe-preview"))
+
+    def test_second_fetch_reuses_cached_suggestion_and_does_not_reset_approval(self):
+        """React StrictMode 등으로 GET이 두 번 불려도 이미 승인한 상태를 되돌리면 안 된다."""
+        project = self._create_project()
+        with mock.patch.object(server_mod.silence_mod, "get_video_resolution", return_value=(1920, 1080)) as res_mock, \
+             mock.patch.object(server_mod.silence_mod, "get_duration", return_value=10.0), \
+             mock.patch.object(server_mod, "extract_frame_at"), \
+             mock.patch.object(server_mod.subject_detection_mod, "detect_faces", return_value=[]), \
+             mock.patch.object(server_mod.reframe_mod, "render_crop_preview_image", return_value="/tmp/preview.jpg"):
+            first = self.client.get(f"/api/projects/{project['id']}/reframe-suggestion").json()
+            self.client.patch(f"/api/projects/{project['id']}/reframe-approval", json={"approved": True})
+
+            second = self.client.get(f"/api/projects/{project['id']}/reframe-suggestion").json()
+
+            self.assertTrue(second["approved"])
+            self.assertEqual(second["crop"], first["crop"])
+            res_mock.assert_called_once()  # 두 번째 호출에서는 재계산하지 않음
+
+    def test_recompute_true_forces_fresh_calculation_and_resets_approval(self):
+        project = self._create_project()
+        with mock.patch.object(server_mod.silence_mod, "get_video_resolution", return_value=(1920, 1080)), \
+             mock.patch.object(server_mod.silence_mod, "get_duration", return_value=10.0), \
+             mock.patch.object(server_mod, "extract_frame_at"), \
+             mock.patch.object(server_mod.subject_detection_mod, "detect_faces", return_value=[]), \
+             mock.patch.object(server_mod.reframe_mod, "render_crop_preview_image", return_value="/tmp/preview.jpg"):
+            self.client.get(f"/api/projects/{project['id']}/reframe-suggestion")
+            self.client.patch(f"/api/projects/{project['id']}/reframe-approval", json={"approved": True})
+
+            response = self.client.get(f"/api/projects/{project['id']}/reframe-suggestion?recompute=true").json()
+            self.assertFalse(response["approved"])
+
+    def test_approval_requires_suggestion_first(self):
+        project = self._create_project()
+        response = self.client.patch(f"/api/projects/{project['id']}/reframe-approval", json={"approved": True})
+        self.assertEqual(response.status_code, 400)
+
+    def test_approval_toggle_after_suggestion(self):
+        project = self._create_project()
+        proj_obj = server_mod.store.get(project["id"])
+        proj_obj.reframe_crop = CropWindow(x=0.0, y=0.0, width=600.0, height=1080.0, zoom=1.0, subject_fully_contained=True)
+
+        response = self.client.patch(f"/api/projects/{project['id']}/reframe-approval", json={"approved": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["approved"])
+        self.assertTrue(proj_obj.reframe_approved)
+
+        response = self.client.patch(f"/api/projects/{project['id']}/reframe-approval", json={"approved": False})
+        self.assertFalse(response.json()["approved"])
+
+    def test_preview_missing_returns_404(self):
+        project = self._create_project()
+        response = self.client.get(f"/api/projects/{project['id']}/reframe-preview")
+        self.assertEqual(response.status_code, 404)
+
+    def test_preview_serves_existing_file(self):
+        project = self._create_project()
+        proj_obj = server_mod.store.get(project["id"])
+        preview_dir = Path(proj_obj.workdir)
+        preview_dir.mkdir(parents=True, exist_ok=True)
+        preview_path = preview_dir / "preview.jpg"
+        preview_path.write_bytes(b"fake jpeg bytes")
+        proj_obj.reframe_preview_path = str(preview_path)
+
+        response = self.client.get(f"/api/projects/{project['id']}/reframe-preview")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"fake jpeg bytes")
 
 
 class TestHooksAndSubtitles(ServerTestCase):

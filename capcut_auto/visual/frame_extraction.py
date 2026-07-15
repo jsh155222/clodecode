@@ -147,7 +147,7 @@ def merge_and_space_trigger_times(
     return sorted(filled, key=lambda t: t.time)
 
 
-def _extract_frame_at(video_path: str, time: float, output_path: str) -> None:
+def extract_frame_at(video_path: str, time: float, output_path: str) -> None:
     ffmpeg = require_binary("ffmpeg")
     cmd = [
         ffmpeg,
@@ -199,7 +199,7 @@ def extract_representative_frames(
     extracted: List[ExtractedFrame] = []
     for i, candidate in enumerate(spaced):
         frame_path = str(Path(output_dir) / f"frame_{i:04d}_{candidate.trigger.value.lower()}.jpg")
-        _extract_frame_at(video_path, candidate.time, frame_path)
+        extract_frame_at(video_path, candidate.time, frame_path)
         extracted.append(ExtractedFrame(time=candidate.time, trigger=candidate.trigger, path=frame_path))
 
     return extracted

@@ -88,6 +88,22 @@ export interface CorrectionStatus extends JobStatus {
   stabilized?: boolean
 }
 
+export interface CropWindowDto {
+  x: number
+  y: number
+  width: number
+  height: number
+  zoom: number
+  subjectFullyContained: boolean
+}
+
+export interface ReframeSuggestionDto {
+  crop: CropWindowDto
+  faceDetected: boolean
+  previewUrl: string
+  approved: boolean
+}
+
 export interface CutsResponse {
   cutCandidates: CutCandidate[]
   keptDuration: number
@@ -165,6 +181,18 @@ export function startCorrection(id: string, stabilize: boolean): Promise<{ statu
 
 export function getCorrectionStatus(id: string): Promise<CorrectionStatus> {
   return request(`/api/projects/${id}/correction`)
+}
+
+export function getReframeSuggestion(id: string): Promise<ReframeSuggestionDto> {
+  return request(`/api/projects/${id}/reframe-suggestion`)
+}
+
+export function updateReframeApproval(id: string, approved: boolean): Promise<{ approved: boolean }> {
+  return request(`/api/projects/${id}/reframe-approval`, { method: 'PATCH', body: JSON.stringify({ approved }) })
+}
+
+export function reframePreviewUrl(previewUrl: string): string {
+  return `${API_BASE}${previewUrl}`
 }
 
 export function getSubtitles(id: string): Promise<{ lines: SubtitleLineDto[] }> {

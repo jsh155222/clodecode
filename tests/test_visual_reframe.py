@@ -1,16 +1,25 @@
 """9:16 리프레이밍(capcut_auto/visual/reframe.py) 테스트. (테스트 시나리오 12: 9:16 크롭)"""
 
+import shutil
+import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 
 from capcut_auto.visual.reframe import (
     align_before_after_crop,
     apply_approved_reframe,
     compute_crop_window,
+    render_crop_preview_image,
+    render_static_crop,
     smooth_crop_path,
     zoom_limit_for_resolution,
     ReframePlan,
 )
 from capcut_auto.visual.subject_detection import BoundingBox
+from capcut_auto.silence import get_video_resolution
+
+FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
 
 
 class TestZoomLimitForResolution(unittest.TestCase):
@@ -110,6 +119,54 @@ class TestApplyApprovedReframe(unittest.TestCase):
     def test_approved_plan_passes_through(self):
         plan = ReframePlan(frame_times=[0.0], windows=[compute_crop_window(1920, 1080, None)], approved=True)
         self.assertEqual(apply_approved_reframe(plan), plan)
+
+
+def _make_synthetic_video(path: str, width=640, height=360, duration=2) -> None:
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", f"testsrc=size={width}x{height}:rate=10:duration={duration}", path],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+@unittest.skipUnless(FFMPEG_AVAILABLE, "ffmpeg가 설치되어 있지 않아 통합 테스트를 건너뜁니다.")
+class TestRenderStaticCropIntegration(unittest.TestCase):
+    def test_renders_real_9x16_video_matching_target_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "src.mp4")
+            _make_synthetic_video(video_path, width=640, height=360)
+            width, height = get_video_resolution(video_path)
+            crop = compute_crop_window(width, height, None)
+
+            out_path = str(Path(tmp) / "out.mp4")
+            render_static_crop(video_path, crop, out_path, target_width=360, target_height=640)
+
+            self.assertTrue(Path(out_path).exists())
+            out_width, out_height = get_video_resolution(out_path)
+            self.assertEqual((out_width, out_height), (360, 640))
+
+    def test_renders_real_preview_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "src.mp4")
+            _make_synthetic_video(video_path, width=640, height=360)
+            width, height = get_video_resolution(video_path)
+            crop = compute_crop_window(width, height, None)
+
+            out_path = str(Path(tmp) / "preview.jpg")
+            render_crop_preview_image(video_path, crop, out_path, sample_time=0.5)
+
+            self.assertTrue(Path(out_path).exists())
+            self.assertGreater(Path(out_path).stat().st_size, 0)
+
+
+@unittest.skipUnless(FFMPEG_AVAILABLE, "ffmpeg가 설치되어 있지 않아 통합 테스트를 건너뜁니다.")
+class TestGetVideoResolutionIntegration(unittest.TestCase):
+    def test_returns_real_resolution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "src.mp4")
+            _make_synthetic_video(video_path, width=640, height=360)
+            self.assertEqual(get_video_resolution(video_path), (640, 360))
 
 
 if __name__ == "__main__":

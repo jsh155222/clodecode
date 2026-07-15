@@ -40,6 +40,9 @@ from .shooting_guide import ShootingGuideInput, generate_shooting_plan
 from .subtitles import SubtitleLine
 from .timeline import Interval
 from .transcribe import transcribe as transcribe_audio
+from .visual import reframe as reframe_mod
+from .visual import subject_detection as subject_detection_mod
+from .visual.frame_extraction import extract_frame_at
 
 APP_STATE_DIR = Path("capcut_auto_server_work")
 store = ProjectStore(str(APP_STATE_DIR / "projects"))
@@ -314,8 +317,14 @@ def _run_correction_job(project: Project) -> None:
     job.status = "running"
     job.error = None
     try:
+        video_path = project.video_path
+        if project.reframe_approved and project.reframe_crop is not None:
+            cropped_path = str(Path(project.workdir) / "reframed.mp4")
+            reframe_mod.render_static_crop(project.video_path, project.reframe_crop, cropped_path)
+            video_path = cropped_path
+
         result = visual_correction_mod.auto_correct(
-            project.video_path, str(Path(project.workdir) / "correction"), stabilize_enabled=project.stabilize_enabled
+            video_path, str(Path(project.workdir) / "correction"), stabilize_enabled=project.stabilize_enabled
         )
         project.correction_result = result
         job.status = "done"
@@ -346,6 +355,90 @@ def get_correction_status(project_id: str):
         response["meanLuma"] = project.correction_result.brightness_stats.mean_luma
         response["stabilized"] = project.correction_result.stabilized
     return response
+
+
+def _crop_to_dict(crop: "reframe_mod.CropWindow") -> dict:
+    return {
+        "x": crop.x,
+        "y": crop.y,
+        "width": crop.width,
+        "height": crop.height,
+        "zoom": crop.zoom,
+        "subjectFullyContained": crop.subject_fully_contained,
+    }
+
+
+@app.get("/api/projects/{project_id}/reframe-suggestion")
+def get_reframe_suggestion(project_id: str, recompute: bool = False):
+    """9:16 크롭 후보를 계산하고, 승인 전 미리보기 이미지까지 렌더링해둔다.
+
+    이미 계산된 후보가 있으면(예: 화면을 벗어났다가 다시 돌아오거나, React가 effect를
+    두 번 실행하는 경우) 그걸 그대로 반환한다 - 매번 새로 계산하면 사용자가 이미 승인한
+    상태(reframe_approved)를 조용히 되돌려버리는 문제가 생긴다. recompute=true로 명시적
+    요청할 때만 다시 계산한다("다시 분석" 같은 사용자 액션용).
+    """
+    project = _get_project_or_404(project_id)
+
+    if project.reframe_crop is not None and not recompute:
+        return {
+            "crop": _crop_to_dict(project.reframe_crop),
+            "faceDetected": project.reframe_face_detected,
+            "previewUrl": f"/api/projects/{project_id}/reframe-preview",
+            "approved": project.reframe_approved,
+        }
+
+    try:
+        width, height = silence_mod.get_video_resolution(project.video_path)
+        duration = project.total_duration or silence_mod.get_duration(project.video_path)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    sample_time = duration * 0.4
+    reframe_dir = Path(project.workdir) / "reframe"
+    reframe_dir.mkdir(parents=True, exist_ok=True)
+    sample_frame_path = str(reframe_dir / "sample.jpg")
+    extract_frame_at(project.video_path, sample_time, sample_frame_path)
+
+    faces = subject_detection_mod.detect_faces(sample_frame_path)
+    confident_face = next((f for f in faces if subject_detection_mod.is_confident(f)), None)
+    bbox = confident_face.bbox if confident_face else None
+
+    crop = reframe_mod.compute_crop_window(width, height, bbox)
+    project.reframe_crop = crop
+    project.reframe_face_detected = bbox is not None
+    project.reframe_approved = False  # 새로 계산되면 다시 승인받아야 한다
+
+    preview_path = str(reframe_dir / "preview.jpg")
+    reframe_mod.render_crop_preview_image(project.video_path, crop, preview_path, sample_time)
+    project.reframe_preview_path = preview_path
+
+    return {
+        "crop": _crop_to_dict(crop),
+        "faceDetected": project.reframe_face_detected,
+        "previewUrl": f"/api/projects/{project_id}/reframe-preview",
+        "approved": project.reframe_approved,
+    }
+
+
+class ReframeApprovalRequest(BaseModel):
+    approved: bool
+
+
+@app.patch("/api/projects/{project_id}/reframe-approval")
+def update_reframe_approval(project_id: str, body: ReframeApprovalRequest):
+    project = _get_project_or_404(project_id)
+    if body.approved and project.reframe_crop is None:
+        raise HTTPException(status_code=400, detail="먼저 리프레이밍 후보를 계산해야 합니다.")
+    project.reframe_approved = body.approved
+    return {"approved": project.reframe_approved}
+
+
+@app.get("/api/projects/{project_id}/reframe-preview")
+def get_reframe_preview(project_id: str):
+    project = _get_project_or_404(project_id)
+    if not project.reframe_preview_path or not Path(project.reframe_preview_path).exists():
+        raise HTTPException(status_code=404, detail="미리보기 이미지가 아직 없습니다.")
+    return FileResponse(project.reframe_preview_path, media_type="image/jpeg")
 
 
 # --------------------------------------------------------- 5. subtitles+hook
