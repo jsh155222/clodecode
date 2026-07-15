@@ -1,0 +1,41 @@
+{
+  "category": "CAMPING",
+  "protectedMoments": [
+    "장비 설치 순서",
+    "안전 정보",
+    "불 사용 장면",
+    "조리 과정",
+    "텐트 설치",
+    "자연음",
+    "캠핑 환경",
+    "장비 실제 사용",
+    "완성된 사이트"
+  ],
+  "removableMoments": [],
+  "preferredPacing": "SLOW",
+  "subtitleDensity": "LOW",
+  "preserveNaturalAudio": true,
+  "preferredShotTypes": [
+    "wide",
+    "medium",
+    "side_angle",
+    "close_up"
+  ],
+  "discouragedSoundEffects": [
+    "인공 불소리 효과음",
+    "인공 자연음 효과음"
+  ],
+  "safetyChecks": [
+    "화기, 칼, 가스 관련 안전 설명 삭제 금지",
+    "자연음과 불소리를 보호",
+    "설치 순서를 보수적으로 편집",
+    "캠핑 장비 성능을 과장하지 않는다"
+  ],
+  "shootingGuideRules": [
+    "사이트 전체는 wide로 촬영",
+    "설치 과정은 medium 또는 side_angle로 촬영",
+    "장비 디테일은 close_up으로 촬영",
+    "불과 음식은 close_up으로 촬영",
+    "자연 풍경은 wide로 촬영"
+  ]
+}

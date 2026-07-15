@@ -1,0 +1,9 @@
+.title {
+  font-size: var(--font-title);
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.grid {
+  margin-top: 8px;
+}

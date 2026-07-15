@@ -1,0 +1,37 @@
+{
+  "category": "TRAVEL",
+  "protectedMoments": [
+    "장소 전체",
+    "이동 과정",
+    "핵심 체험",
+    "실제 장소 소리",
+    "음식과 숙소",
+    "중요 정보가 실제 입력에 있는 경우 해당 정보",
+    "감정과 분위기"
+  ],
+  "removableMoments": [],
+  "preferredPacing": "SLOW",
+  "subtitleDensity": "LOW",
+  "preserveNaturalAudio": true,
+  "preferredShotTypes": [
+    "wide",
+    "medium",
+    "close_up",
+    "POV",
+    "follow"
+  ],
+  "discouragedSoundEffects": [
+    "인공 자연/현장음 효과음"
+  ],
+  "safetyChecks": [
+    "장소명과 가격을 추측하지 않는다",
+    "실제 위치 정보가 없으면 생성하지 않는다",
+    "이동 흐름을 과도하게 잘라 맥락을 잃지 않게 한다"
+  ],
+  "shootingGuideRules": [
+    "장소는 wide로 촬영",
+    "체험은 medium으로 촬영",
+    "음식과 디테일은 close_up으로 촬영",
+    "이동은 POV 또는 follow로 촬영"
+  ]
+}

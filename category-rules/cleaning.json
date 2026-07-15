@@ -1,0 +1,34 @@
+{
+  "category": "CLEANING",
+  "protectedMoments": [
+    "오염 상태",
+    "세척제 적용",
+    "닦이는 변화",
+    "실제 청소음",
+    "전후 비교",
+    "결과"
+  ],
+  "removableMoments": [
+    "변화 없는 긴 닦기",
+    "같은 청소 동작 반복",
+    "반복 설명"
+  ],
+  "preferredPacing": "FAST",
+  "subtitleDensity": "LOW",
+  "preserveNaturalAudio": true,
+  "preferredShotTypes": [
+    "extreme_close_up",
+    "detail",
+    "top_down",
+    "side_angle"
+  ],
+  "discouragedSoundEffects": [
+    "인공 마찰음 효과음"
+  ],
+  "safetyChecks": [],
+  "shootingGuideRules": [
+    "오염은 extreme_close_up 또는 detail로 촬영",
+    "손 작업은 top_down 또는 side_angle로 촬영",
+    "결과는 전후 비교와 같은 구도로 촬영"
+  ]
+}

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+capcut_auto_work/
+capcut_auto_server_work/
+*.wav
+*.srt
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+ffmpeg/
+ffmpeg_temp.zip
+ffmpeg_extract/

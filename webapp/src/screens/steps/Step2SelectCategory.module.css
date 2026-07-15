@@ -1,0 +1,8 @@
+.selectorWrap {
+  margin-top: 12px;
+}
+
+.nextButton {
+  width: 100%;
+  margin-top: var(--section-gap-min);
+}

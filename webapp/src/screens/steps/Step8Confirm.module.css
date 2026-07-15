@@ -1,0 +1,32 @@
+.summaryList {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px var(--card-padding);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: var(--font-label);
+}
+
+.value {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}

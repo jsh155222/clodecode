@@ -1,0 +1,68 @@
+.sectionTitle {
+  font-size: var(--font-title);
+  font-weight: 700;
+  margin: var(--section-gap-min) 0 12px;
+}
+
+.hookList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hookOption {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  text-align: left;
+  padding: 12px var(--card-padding);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-size: var(--font-body);
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.hookSelected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+  font-weight: 700;
+}
+
+.subtitleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subtitleRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeRange {
+  font-size: var(--font-label);
+  color: var(--color-text-muted);
+}
+
+.subtitleInput {
+  min-height: var(--touch-target-min);
+  padding: 10px 14px;
+  font-size: var(--font-body);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-family: inherit;
+  resize: vertical;
+}
+
+.empty {
+  color: var(--color-text-muted);
+  padding: 16px 0;
+}

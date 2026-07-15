@@ -1,0 +1,27 @@
+{
+  "category": "LIVING",
+  "protectedMoments": [
+    "생활 불편 설명",
+    "실제 사용 과정",
+    "제품 또는 도구 사용법",
+    "전후 변화",
+    "최종 결과"
+  ],
+  "removableMoments": [],
+  "preferredPacing": "MEDIUM",
+  "subtitleDensity": "MEDIUM",
+  "preserveNaturalAudio": false,
+  "preferredShotTypes": [
+    "wide",
+    "close_up",
+    "detail"
+  ],
+  "discouragedSoundEffects": [],
+  "safetyChecks": [],
+  "shootingGuideRules": [
+    "공간 전체는 wide로 촬영",
+    "제품 사용은 close_up으로 촬영",
+    "작은 문제는 detail로 촬영",
+    "전후 비교는 같은 앵글을 유지"
+  ]
+}

@@ -1,0 +1,124 @@
+.form {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap-min);
+}
+
+.categoryBlock {
+  margin: 4px 0;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch-target-min);
+  font-size: var(--font-body);
+  margin-bottom: 12px;
+}
+
+.checkboxRow input {
+  width: 22px;
+  height: 22px;
+}
+
+.nextButton {
+  width: 100%;
+  margin-top: var(--section-gap-min);
+}
+
+.backToFormButton {
+  width: 100%;
+  margin-top: var(--section-gap-min);
+}
+
+.resultBox {
+  margin-top: 20px;
+}
+
+.shotList {
+  list-style: none;
+  margin: 20px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shotCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: var(--card-padding);
+}
+
+.shotHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.shotOrder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 700;
+  font-size: var(--font-label);
+  flex-shrink: 0;
+}
+
+.angleBadge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.shotSeconds {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-label);
+}
+
+.shotTitle {
+  margin: 0 0 6px;
+  font-size: var(--font-body);
+  font-weight: 700;
+}
+
+.shotDescription {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-body);
+}
+
+.shotTip {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-label);
+}
+
+.sectionTitle {
+  font-size: var(--font-title);
+  font-weight: 700;
+  margin: var(--section-gap-min) 0 12px;
+}
+
+.tipList {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--font-body);
+  color: var(--color-text-muted);
+}
