@@ -183,6 +183,20 @@ cd webapp && npx vitest run                # 프론트엔드 (52개)
 주소(`capcut_auto/server.py`가 `webapp/dist`까지 함께 서빙하도록 구성해뒀음 - 아래 참고)를
 여는 창 하나만 보여주는 얇은 래퍼입니다.
 
+### 가장 쉬운 방법: `build-desktop.bat` (Windows)
+
+1. [nodejs.org](https://nodejs.org)에서 Node.js(LTS 버전)를 설치합니다(Python처럼 그냥 계속
+   눌러 설치하면 됩니다). 이미 설치되어 있다면 건너뛰세요.
+2. 저장소 루트의 **`build-desktop.bat`을 더블클릭**합니다. 웹 화면 빌드 → 데스크톱 앱 패키지
+   설치 → 설치 파일(.exe) 생성까지 전부 자동으로 진행됩니다(몇 분 걸릴 수 있음).
+3. 끝나면 `desktop\dist-electron\` 폴더 안에 생긴 설치 파일을 실행하면 설치됩니다. 그 다음부터는
+   바탕화면/시작메뉴 아이콘으로 실행하면 됩니다.
+
+> 앱을 처음 실행할 때 필요한 파이썬 패키지를 자동으로 한 번 더 설치합니다(진행 상황 창이 뜸) -
+> 인터넷 연결이 필요합니다.
+
+### 수동으로 빌드하기 (macOS/Linux 또는 직접 단계를 보고 싶을 때)
+
 ```bash
 # 1) 프론트엔드를 정적 파일로 빌드 (server.py가 이걸 직접 서빙함)
 cd webapp && npm install && npm run build
