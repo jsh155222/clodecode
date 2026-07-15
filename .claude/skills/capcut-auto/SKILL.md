@@ -51,19 +51,24 @@ capcut_auto/
                           기존 규칙 기반 파이프라인과 독립적으로 추가된 레이어 - server.py의
                           3/4/6단계는 아직 이 패키지를 쓰지 않음(연결은 다음 단계)
   visual/                 대표 프레임 추출/피사체 감지/9:16 리프레이밍/자막 안전 영역
-                          (아래 "capcut_auto/visual/" 절 참고). server.py/webapp에는 아직 미연결
+                          (아래 "capcut_auto/visual/" 절 참고). reframe.py의 crop 계산+렌더링은
+                          server.py Step5(화면 보정)에 연결됨(아래 "9:16 자동 리프레이밍 연결" 참고).
+                          frame_extraction.py/subject_detection.py는 그 내부에서만 쓰이고
+                          단독 REST 엔드포인트는 아직 없음
   sfx_recommend.py         장면에 맞는 효과음 추천 - 목적 분류 → 내부 에셋(ffmpeg 절차 생성) 검색 →
                           실제 오디오 충돌(빈도/음성/보호구간/연속반복) 확인 → 최대 3개 후보 →
-                          apply_approved_sfx()로 승인된 것만 적용. server.py/webapp 미연결
+                          apply_approved_sfx()로 승인된 것만 적용. server.py Step7(소리)에 연결됨
   bgm_recommend.py          BGM 추천 - 무드/템포범위/에너지/보컬유무/검색키워드/음성중 자동
                           덕킹 규칙만 추천. 곡 제목/아티스트/저작권/트렌드 여부는 절대 만들지
-                          않음(FORBIDDEN_FIELD_NAMES로 하드 가드). server.py/webapp 미연결
+                          않음(FORBIDDEN_FIELD_NAMES로 하드 가드). server.py Step7(소리)에 연결됨
   shooting_guide_v2.py     MODE 2 확장 - 새 ShootingGuideInput 스키마(topic/category/subject/
                           targetDurationSeconds/...), 길이 기반 컷개수 규칙, 역할별
                           카메라 5요소+자막안전영역+필수여부, 체크리스트+진행률.
                           기존 shooting_guide.py(v1, server.py에 연결됨)는 그대로 두고 별도
-                          모듈로 추가함 - server.py/webapp 미연결
-tests/                    371개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
+                          모듈로 추가함 - `/api/shooting-guide-v2`로 연결됨(webapp의
+                          ShootingGuideScreen "새 방식" 토글). **MODE1 인계(continueToAutoEdit)는
+                          아직 v1 스키마만 지원해서 v2 계획은 열람/체크리스트 전용**(알려진 한계)
+tests/                    401개 유닛테스트. ffmpeg/whisper/pycapcut 없이도 순수 로직은 전부 통과.
                           test_*_integration.py는 실제 ffmpeg 있을 때만 돌아감(skipUnless).
                           ai_test_helpers.py는 진짜 네트워크 호출 없이 client.py를 검증하는
                           가짜(fake) Anthropic 클라이언트 - 모든 tests/test_ai_*.py가 공유함
@@ -78,9 +83,11 @@ webapp/
                                    프로젝트 생성 → projectId를 3~9단계에 내려줌
   src/screens/steps/Step1~9*.tsx    각 단계. 3,5,7,9는 useJobPolling으로 백엔드 작업 실행,
                                    4,6은 동기 CRUD, 8은 요약 조회
-  src/screens/ShootingGuideScreen.tsx  MODE 2 입력 폼 + 실제 촬영 계획 결과 화면. 결과 화면에서
+  src/screens/ShootingGuideScreen.tsx  MODE 2 입력 폼 + 실제 촬영 계획 결과 화면. "기본 방식"(v1)/
+                                   "새 방식"(v2, 카메라 세부정보+체크리스트) 토글 제공. v1 결과 화면의
                                    "이 계획으로 영상 편집 시작" 버튼을 누르면 continueToAutoEdit(plan)으로
-                                   MODE 1로 즉시 전환됨 (아래 "MODE 1 ↔ MODE 2 인계" 참고)
+                                   MODE 1로 즉시 전환됨 (아래 "MODE 1 ↔ MODE 2 인계" 참고) - v2는 아직
+                                   이 인계를 지원하지 않음
 ```
 
 ## capcut_auto/ai/ - AI 자동 편집 핵심 기능
@@ -325,17 +332,25 @@ MODE 1은 전부 `/api/projects/{id}/...` (project_store 상태 기반):
 | `POST /api/projects` | multipart: video 파일 + category + topic → 프로젝트 생성 |
 | `POST`/`GET .../analyze` | 3단계: 무음/필러/반복 탐지 + whisper 전사 (백그라운드 스레드+폴링) |
 | `GET`/`PATCH .../cuts` | 4단계: 컷 후보 조회/토글 (토글 시 keep_intervals·자막 즉시 재계산) |
-| `POST`/`GET .../correction` | 5단계: 화면 보정 (visual_correction.auto_correct, 폴링) |
+| `POST`/`GET .../correction` | 5단계: 화면 보정 (visual_correction.auto_correct, 폴링). **reframe_approved가 true면 auto_correct 호출 전에 render_static_crop()으로 9:16 크롭을 먼저 적용**(Phase 4) |
+| `GET .../reframe-suggestion` | 5단계: 9:16 크롭 후보 계산(얼굴 검출 + compute_crop_window) + 실제 미리보기 이미지 렌더링. **이미 계산된 후보가 있으면 캐시를 그대로 반환**(재계산하면 사용자 승인이 초기화되는 문제를 실제 e2e 테스트로 발견해 고침) - `?recompute=true`로 강제 재계산 가능(Phase 4) |
+| `PATCH .../reframe-approval` | 5단계: 9:16 크롭 후보 승인/취소 (Phase 4) |
+| `GET .../reframe-preview` | 5단계: 크롭 미리보기 JPG 파일 응답 (Phase 4) |
 | `GET`/`PATCH .../subtitles`, `GET .../hooks`, `PATCH .../hook` | 6단계: 자막 수정, 훅 문구 추천/선택 |
-| `GET .../bgm-library`, `PATCH .../audio-settings`, `POST`/`GET .../audio` | 7단계: 배경음/효과음 (폴링) |
+| `GET .../bgm-library`, `PATCH .../audio-settings`, `POST`/`GET .../audio` | 7단계: 배경음/효과음 (폴링). **오디오 작업이 bgm_recommend 추천 무드/덕킹비율과, project.words 기반 실제 발화구간으로 mix_bgm()에 음성중 자동 볼륨감소를 넘기고, 승인된 sfx_recommend 배치가 있으면 apply_multiple_sfx로 적용, 없으면 기존 컷마다 pop 방식으로 폴백**(Phase 4) |
+| `GET .../bgm-recommendation` | 7단계: BGM 메타데이터 추천(무드/템포/에너지/키워드/덕킹) - 상업 정보 없음 (Phase 4) |
+| `GET .../sfx-suggestions` | 7단계: 장면별 효과음 후보 추천(3단계 분석 완료 필요) (Phase 4) |
+| `PATCH .../sfx-suggestions` | 7단계: 효과음 후보 승인/선택 (Phase 4) |
+| `GET /api/sfx-preview/{assetId}` | 7단계: 효과음 미리듣기 오디오 파일 응답 (Phase 4) |
 | `GET .../summary` | 8단계: 지금까지 선택 요약 |
 | `POST`/`GET .../export` | 9단계: draft_builder.build_draft 호출 (폴링) |
 
-MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
+MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**(v1/v2 병행):
 
 | 메서드/경로 | 용도 |
 |---|---|
-| `POST /api/shooting-guide` | topic/category/productOrSituation/targetDuration(필수) + location/equipment/faceOnCamera/mustShowScenes/availableTime/notes(선택) → `shooting_guide.generate_shooting_plan()` 호출, 앵글/촬영 순서(ShootingPlan) 즉시 반환. 빠른 순수 함수라 폴링 불필요 |
+| `POST /api/shooting-guide` | topic/category/productOrSituation/targetDuration(필수) + location/equipment/faceOnCamera/mustShowScenes/availableTime/notes(선택) → `shooting_guide.generate_shooting_plan()` 호출, 앵글/촬영 순서(ShootingPlan) 즉시 반환. 빠른 순수 함수라 폴링 불필요. **MODE1 인계(continueToAutoEdit)는 이 v1 응답 스키마만 지원** |
+| `POST /api/shooting-guide-v2` | topic/category/subject/targetDurationSeconds(필수) + location/equipment(배열)/showFace/availableShootingMinutes/mustShowSteps(배열)/additionalNotes(선택) → `shooting_guide_v2.generate_shooting_plan_v2()` 호출. 역할별 카메라 5요소/촬영권장시간/자막안전영역/필수여부가 담긴 ShootingPlanV2 반환(Phase 4). webapp의 ShootingGuideScreen "새 방식" 토글에서 쓰이며, **아직 MODE1로 인계되지 않고 열람/체크리스트 전용**(알려진 범위 제한) |
 
 모든 "무거운" 단계(analyze/correction/audio/export)는 **같은 패턴**: POST가 스레드를 띄우고 즉시
 `{"status":"running"}` 반환, 같은 경로 GET으로 `{status, log, error}`를 폴링. `Project.job(name)`이
@@ -444,7 +459,7 @@ MODE 2는 완전히 별도, **상태 없는(stateless) 단일 엔드포인트**:
 
 ```bash
 # 1. 파이썬 순수 로직 전체 (항상 통과해야 함, ffmpeg/whisper/pycapcut 불필요)
-python3 -m unittest discover -s tests -v   # 371개 (opencv-python-headless==4.10.0.84 필요 -
+python3 -m unittest discover -s tests -v   # 401개 (opencv-python-headless==4.10.0.84 필요 -
                                             # visual/subject_detection.py용, 5.0.0은 cascade 데이터 없음)
 
 # 2. .bat 파일을 건드렸다면 CRLF/괄호 이스케이프 재확인 (위 1, 2번 참고)
@@ -459,7 +474,7 @@ python3 -m unittest tests.test_server -v   # 23개, ProjectStore를 tempdir로 p
 # 5. gui.py를 건드렸다면 Xvfb로 실제 렌더링 (apt-get install python3-tk x11-apps 최초 1회)
 
 # 6. webapp/을 건드렸다면 (백엔드가 8000번 포트에서 떠 있으면 vitest 먼저 끌 것 - 위 "흔한 실패 지점" 11번 참고)
-cd webapp && npx tsc -b && npm run build && npx vitest run   # 39개
+cd webapp && npx tsc -b && npm run build && npx vitest run   # 52개
 
 # 7. 백엔드+프론트엔드 통합을 건드렸다면 진짜로 둘 다 띄워서 확인 (CORS 포트 주의! 위 6번 참고):
 python3 -c "
@@ -485,11 +500,14 @@ import uvicorn; uvicorn.run(s.app, host='127.0.0.1', port=8000)
 - SHOOTING_GUIDE(MODE 2)의 촬영 계획 생성 로직은 이제 구현되어 있다(`shooting_guide.py` +
   `/api/shooting-guide`). 카테고리당 6~8개 앵글 템플릿만 정의돼 있어서, 정의되지 않은 세부 상황에는
   다소 일반적인 문구가 나올 수 있다는 점은 한계로 남아있음.
-- **Phase 4(`visual/`, `sfx_recommend.py`, `bgm_recommend.py`, `shooting_guide_v2.py`)는 전부 순수
-  엔진+테스트 단계다 - `server.py` REST 엔드포인트나 webapp UI에 아직 연결되지 않았다** (`ai/`
-  패키지와 같은 상태). 사용자가 "9:16 크롭이 실제로 화면에 보이나요?" 등을 물으면, 계산/검증 로직은
-  전부 실제로 동작하고 테스트도 통과하지만, 지금은 웹앱 화면에서 그 결과를 볼 수 있는 UI/API가 아직
-  없다고 정직하게 답할 것. 다음 단계에서 연결 작업이 필요하다.
+- **Phase 4 모듈(`visual/reframe.py`, `sfx_recommend.py`, `bgm_recommend.py`, `shooting_guide_v2.py`)은
+  이제 전부 server.py/webapp에 실제로 연결되어 있다**(9:16 리프레이밍→Step5, 효과음/BGM 추천→Step7,
+  촬영 가이드 v2→ShootingGuideScreen "새 방식" 토글) - 위 "server.py REST API" 표와 각 모듈 절에
+  실제 엔드포인트가 기록되어 있다. 실제 uvicorn+vite+Playwright로 끝까지 클릭해 검증했다(스크린샷 확인함).
+  다만 `visual/subject_detection.py`/`frame_extraction.py`는 reframe 엔드포인트 내부에서만 쓰이고
+  단독 엔드포인트는 없으며, `ai/` 패키지(영상 구조 분석 등 LLM 기반 기능)는 여전히 미연결이다 -
+  ANTHROPIC_API_KEY 인프라 자체가 없어서 다음 단계로 남아있음. shooting_guide_v2는 위에 적힌 대로
+  MODE1 인계는 아직 지원하지 않는다.
 - `subject_detection.py`는 얼굴만 실제 검출하고 나머지 카테고리(hand/product/tool/...)는 항상
   빈 리스트를 반환한다 - 검출기 자체가 없어서 지어내지 않기로 한 설계다. 실사용에 쓰려면 실제
   객체 검출 모델(YOLO 등)을 연결해야 하며, 그 전까지는 얼굴 기반 리프레이밍/자막 안전 영역만

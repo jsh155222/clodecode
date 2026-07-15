@@ -173,7 +173,7 @@ npm run dev   # http://localhost:5173 접속
 
 ```bash
 python -m unittest tests.test_server -v   # 백엔드 API (mock 기반, 23개)
-cd webapp && npx vitest run                # 프론트엔드 (39개)
+cd webapp && npx vitest run                # 프론트엔드 (52개)
 ```
 
 ## AI 자동 편집 핵심 기능 (capcut_auto/ai/, 진행 중)

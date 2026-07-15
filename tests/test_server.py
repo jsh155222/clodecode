@@ -655,5 +655,71 @@ class TestShootingGuideEndpoint(ServerTestCase):
         self.assertEqual(response.status_code, 422)
 
 
+class TestShootingGuideV2Endpoint(ServerTestCase):
+    def test_generates_plan_with_camera_and_role_fields(self):
+        response = self.client.post(
+            "/api/shooting-guide-v2",
+            json={
+                "topic": "캠핑 요리",
+                "category": "CAMPING",
+                "subject": "더치오븐 요리",
+                "targetDurationSeconds": 30,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data["categoryLabel"], "캠핑")
+        self.assertEqual(data["cutCountRange"], [6, 12])
+        self.assertGreater(len(data["shots"]), 0)
+        shot = data["shots"][0]
+        for key in ("role", "roleLabel", "camera", "recommendedShootingSeconds", "subtitleSafeZoneHint", "mandatory"):
+            self.assertIn(key, shot)
+        for key in ("angle", "distance", "height", "direction", "movement"):
+            self.assertIn(key, shot["camera"])
+
+    def test_must_show_steps_and_equipment_pass_through(self):
+        response = self.client.post(
+            "/api/shooting-guide-v2",
+            json={
+                "topic": "냉장고 정리",
+                "category": "LIVING",
+                "subject": "냉장고",
+                "targetDurationSeconds": 45,
+                "equipment": ["삼각대", "짐벌"],
+                "mustShowSteps": ["유통기한 확인"],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["equipment"], ["삼각대", "짐벌"])
+        self.assertTrue(any(s["description"] == "유통기한 확인" for s in data["shots"]))
+
+    def test_mode1_independence_notice_always_present(self):
+        response = self.client.post(
+            "/api/shooting-guide-v2",
+            json={"topic": "t", "category": "FOOD", "subject": "s", "targetDurationSeconds": 20},
+        )
+        data = response.json()
+        self.assertTrue(any("MODE 1" in w for w in data["warnings"]))
+
+    def test_invalid_category_returns_400(self):
+        response = self.client.post(
+            "/api/shooting-guide-v2",
+            json={"topic": "t", "category": "NOT_REAL", "subject": "s", "targetDurationSeconds": 20},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_empty_subject_returns_400(self):
+        response = self.client.post(
+            "/api/shooting-guide-v2",
+            json={"topic": "t", "category": "FOOD", "subject": "  ", "targetDurationSeconds": 20},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_missing_required_field_returns_422(self):
+        response = self.client.post("/api/shooting-guide-v2", json={"topic": "t", "category": "FOOD"})
+        self.assertEqual(response.status_code, 422)
+
+
 if __name__ == "__main__":
     unittest.main()

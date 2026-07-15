@@ -313,3 +313,53 @@ export interface ShootingPlanDto {
 export function createShootingGuide(body: ShootingGuideRequest): Promise<ShootingPlanDto> {
   return request('/api/shooting-guide', { method: 'POST', body: JSON.stringify(body) })
 }
+
+export interface ShootingGuideRequestV2 {
+  topic: string
+  category: string
+  subject: string
+  targetDurationSeconds: number
+  location?: string
+  equipment?: string[]
+  showFace?: boolean
+  availableShootingMinutes?: number
+  mustShowSteps?: string[]
+  additionalNotes?: string
+}
+
+export interface CameraSpecDto {
+  angle: string
+  distance: string
+  height: string
+  direction: string
+  movement: string
+}
+
+export interface ShotSpecV2Dto {
+  order: number
+  role: string
+  roleLabel: string
+  description: string
+  camera: CameraSpecDto
+  recommendedShootingSeconds: number
+  subtitleSafeZoneHint: string
+  mandatory: boolean
+}
+
+export interface ShootingPlanV2Dto {
+  topic: string
+  category: string
+  categoryLabel: string
+  subject: string
+  targetDurationSeconds: number
+  cutCountRange: [number, number]
+  shotCount: number
+  equipment: string[]
+  totalRecommendedShootingSeconds: number
+  warnings: string[]
+  shots: ShotSpecV2Dto[]
+}
+
+export function createShootingGuideV2(body: ShootingGuideRequestV2): Promise<ShootingPlanV2Dto> {
+  return request('/api/shooting-guide-v2', { method: 'POST', body: JSON.stringify(body) })
+}

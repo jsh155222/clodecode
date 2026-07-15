@@ -122,3 +122,88 @@
   font-size: var(--font-body);
   color: var(--color-text-muted);
 }
+
+.modeToggle {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+
+.modeButton {
+  min-height: var(--touch-target-min);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--font-label);
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.modeButtonSelected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.numberField {
+  display: block;
+  font-size: var(--font-label);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.numberInput {
+  display: block;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  margin-top: 6px;
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-body);
+}
+
+.mandatoryBadge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.cameraList {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 4px 12px;
+  font-size: var(--font-label);
+  color: var(--color-text-muted);
+}
+
+.progressRow {
+  margin: 16px 0;
+  font-size: var(--font-label);
+  color: var(--color-text-muted);
+}
+
+.progressBarTrack {
+  margin-top: 6px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.2s ease;
+}

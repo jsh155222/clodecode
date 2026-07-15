@@ -37,6 +37,7 @@ from .categories import CATEGORY_LABELS, ContentCategory, get_rule
 from .hooks import generate_hook_suggestions
 from .project_store import CutCandidate, Project, ProjectStore
 from .shooting_guide import ShootingGuideInput, generate_shooting_plan
+from .shooting_guide_v2 import ShootingGuideInputV2, generate_shooting_plan_v2
 from .subtitles import SubtitleLine
 from .timeline import Interval
 from .transcribe import transcribe as transcribe_audio
@@ -762,6 +763,81 @@ def create_shooting_guide(body: ShootingGuideRequest):
                 "description": s.description,
                 "estimatedSeconds": s.estimated_seconds,
                 "tip": s.tip,
+            }
+            for s in plan.shots
+        ],
+    }
+
+
+# ---------------------------------------------------- MODE 2 v2: 확장 촬영 가이드
+# 새 ShootingGuideInput 스키마(topic/category/subject/targetDurationSeconds/...)를 그대로
+# 반영한 별도 엔드포인트. 기존 /api/shooting-guide(v1)는 그대로 두고 병행 제공한다 -
+# MODE1 인계(continueToAutoEdit)는 아직 v1 스키마만 지원하므로 v2는 계획 열람/체크리스트
+# 전용으로 쓰인다(알려진 범위 제한, README/보고서에 명시).
+class ShootingGuideRequestV2(BaseModel):
+    topic: str
+    category: str
+    subject: str
+    targetDurationSeconds: int
+    location: Optional[str] = None
+    equipment: Optional[List[str]] = None
+    showFace: Optional[bool] = None
+    availableShootingMinutes: Optional[int] = None
+    mustShowSteps: Optional[List[str]] = None
+    additionalNotes: Optional[str] = None
+
+
+@app.post("/api/shooting-guide-v2")
+def create_shooting_guide_v2(body: ShootingGuideRequestV2):
+    try:
+        category = ContentCategory(body.category)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 카테고리: {body.category}")
+
+    guide_input = ShootingGuideInputV2(
+        topic=body.topic,
+        category=category,
+        subject=body.subject,
+        target_duration_seconds=body.targetDurationSeconds,
+        location=body.location,
+        equipment=body.equipment,
+        show_face=body.showFace,
+        available_shooting_minutes=body.availableShootingMinutes,
+        must_show_steps=body.mustShowSteps,
+        additional_notes=body.additionalNotes,
+    )
+    try:
+        plan = generate_shooting_plan_v2(guide_input)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "topic": plan.topic,
+        "category": plan.category.value,
+        "categoryLabel": plan.category_label,
+        "subject": plan.subject,
+        "targetDurationSeconds": plan.target_duration_seconds,
+        "cutCountRange": list(plan.cut_count_range),
+        "shotCount": plan.shot_count,
+        "equipment": plan.equipment,
+        "totalRecommendedShootingSeconds": plan.total_recommended_shooting_seconds,
+        "warnings": plan.warnings,
+        "shots": [
+            {
+                "order": s.order,
+                "role": s.role,
+                "roleLabel": s.role_label,
+                "description": s.description,
+                "camera": {
+                    "angle": s.camera.angle,
+                    "distance": s.camera.distance,
+                    "height": s.camera.height,
+                    "direction": s.camera.direction,
+                    "movement": s.camera.movement,
+                },
+                "recommendedShootingSeconds": s.recommended_shooting_seconds,
+                "subtitleSafeZoneHint": s.subtitle_safe_zone_hint,
+                "mandatory": s.mandatory,
             }
             for s in plan.shots
         ],
