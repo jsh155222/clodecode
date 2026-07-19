@@ -2,11 +2,12 @@
   "name": "capcut-auto-desktop",
   "version": "1.0.0",
   "description": "CapCut Auto Editor 데스크톱 앱 - 로컬 Python 백엔드(uvicorn)를 띄우고 그 화면을 여는 Electron 셸.",
+  "author": "capcut-auto",
   "private": true,
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder --win"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -34,12 +35,6 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    },
-    "mac": {
-      "target": "dmg"
-    },
-    "linux": {
-      "target": "AppImage"
     }
   }
 }
