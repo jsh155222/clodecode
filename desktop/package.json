@@ -21,6 +21,8 @@
     },
     "files": [
       "main.js",
+      "setup.js",
+      "setup-progress.html",
       "package.json"
     ],
     "extraResources": [
