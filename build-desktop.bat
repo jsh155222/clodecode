@@ -1,6 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
+cd /d "%~dp0"
 
 echo ============================================
 echo  CapCut Auto Editor - 데스크톱 앱 빌드
