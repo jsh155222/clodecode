@@ -30,6 +30,11 @@ const DATA_DIR = app.getPath('userData')
 
 let backendProcess = null
 let mainWindow = null
+// 준비 창(progressWindow)이 닫히는 순간부터 mainWindow가 실제로 뜨기 전까지는
+// "창이 하나도 없는" 짧은 순간이 생긴다. 이때 window-all-closed가 그대로 앱을 종료시켜버리면
+// 준비가 성공했든 실패했든 mainWindow가 뜨기도 전에 앱이 조용히 꺼져버린다 - 아래 플래그로 이 구간엔
+// window-all-closed가 앱을 끄지 않도록 막는다. 실패 시의 종료는 createWindow의 catch에서 명시적으로 한다.
+let startupInProgress = true
 
 /** 0을 bind하면 OS가 비어 있는 포트를 골라준다 - 이미 다른 서버(예: 개발용 uvicorn)가
  * 8000번을 쓰고 있어도 충돌하지 않는다. */
@@ -141,8 +146,10 @@ async function createWindow() {
         nodeIntegration: false,
       },
     })
+    startupInProgress = false
     await mainWindow.loadURL(`http://127.0.0.1:${port}/`)
   } catch (err) {
+    startupInProgress = false
     dialog.showErrorBox(
       'CapCut Auto Editor를 시작할 수 없습니다',
       `로컬 서버를 준비하지 못했습니다.\n\n` +
@@ -157,6 +164,7 @@ app.whenReady().then(createWindow)
 
 app.on('window-all-closed', () => {
   stopBackend()
+  if (startupInProgress) return
   if (process.platform !== 'darwin') app.quit()
 })
 
