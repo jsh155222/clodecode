@@ -28,6 +28,11 @@ const REPO_ROOT = app.isPackaged
 // 항상 여기 둔다 - REPO_ROOT에 쓰려고 하면 설치 폴더 권한 문제로 실패할 수 있다.
 const DATA_DIR = app.getPath('userData')
 
+// 패키징된 앱은 콘솔 창이 없어서 백엔드(uvicorn) stdout/stderr이 어디에도 보이지 않는다.
+// 시작에 실패했을 때 "왜" 실패했는지 알 방법이 없으면 사용자에게 매번 추측성 안내만 하게 되므로,
+// 항상 이 파일에 최근 실행 로그를 남기고 실패 시 오류 창에 그대로 보여준다.
+const BACKEND_LOG_PATH = path.join(DATA_DIR, 'backend.log')
+
 let backendProcess = null
 let mainWindow = null
 // 준비 창(progressWindow)이 닫히는 순간부터 mainWindow가 실제로 뜨기 전까지는
@@ -50,7 +55,16 @@ function findFreePort() {
   })
 }
 
-function waitForBackendReady(port, timeoutMs = 30000) {
+function tailFile(filePath, maxChars = 2000) {
+  try {
+    const content = fs.readFileSync(filePath, 'utf8')
+    return content.length > maxChars ? content.slice(-maxChars) : content
+  } catch {
+    return ''
+  }
+}
+
+function waitForBackendReady(port, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs
   return new Promise((resolve, reject) => {
     const attempt = () => {
@@ -89,12 +103,32 @@ async function startBackend(pythonExe, ffmpegDir) {
     env,
   })
 
-  child.stdout.on('data', (data) => process.stdout.write(`[backend] ${data}`))
-  child.stderr.on('data', (data) => process.stderr.write(`[backend] ${data}`))
+  const logStream = fs.createWriteStream(BACKEND_LOG_PATH, { flags: 'w' })
+  child.stdout.on('data', (data) => {
+    process.stdout.write(`[backend] ${data}`)
+    logStream.write(data)
+  })
+  child.stderr.on('data', (data) => {
+    process.stderr.write(`[backend] ${data}`)
+    logStream.write(data)
+  })
 
   backendProcess = child
 
-  await waitForBackendReady(port)
+  // 백엔드가 응답하기 전에 파이썬 프로세스 자체가 죽어버리면(예: import 오류) 30~60초를
+  // 그냥 흘려보내고 애매한 타임아웃 메시지만 보여주는 대신, 그 즉시 실패로 처리한다.
+  const exitedEarly = new Promise((_, reject) => {
+    child.on('exit', (code, signal) => {
+      reject(new Error(`백엔드 프로세스가 시작되지 못하고 종료되었습니다 (code=${code}, signal=${signal}).`))
+    })
+  })
+
+  try {
+    await Promise.race([waitForBackendReady(port), exitedEarly])
+  } catch (err) {
+    err.message += `\n\n--- 백엔드 실행 로그 ---\n${tailFile(BACKEND_LOG_PATH) || '(로그 없음)'}`
+    throw err
+  }
   return port
 }
 
@@ -152,9 +186,7 @@ async function createWindow() {
     startupInProgress = false
     dialog.showErrorBox(
       'CapCut Auto Editor를 시작할 수 없습니다',
-      `로컬 서버를 준비하지 못했습니다.\n\n` +
-        `Python이 설치되어 있고 PATH에 등록되어 있는지 확인해주세요 (winget/python.org에서 설치 시 ` +
-        `"Add python.exe to PATH"를 체크해야 합니다).\n\n자세한 오류: ${err.message}`,
+      `로컬 서버를 준비하지 못했습니다.\n\n${err.message}\n\n전체 로그 파일: ${BACKEND_LOG_PATH}`,
     )
     app.quit()
   }
