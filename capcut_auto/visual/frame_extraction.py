@@ -64,7 +64,7 @@ def _run_scene_detect(video_path: str, threshold: float) -> List[float]:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     times: List[float] = []
-    for line in result.stderr.splitlines():
+    for line in (result.stderr or "").splitlines():
         if "pts_time:" not in line:
             continue
         match = _PTS_TIME_RE.search(line)

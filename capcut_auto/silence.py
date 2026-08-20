@@ -124,7 +124,10 @@ def detect_silence(
         "-",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    return _parse_silencedetect_output(result.stderr)
+    # 정상적으로는 capture_output=True일 때 result.stderr가 항상 문자열이지만, 일부 Windows
+    # 환경(백신/EDR이 자식 프로세스의 파이프에 개입하는 경우 등)에서 None으로 관측된 사례가 있어
+    # 방어적으로 처리한다 - None이면 무음 구간을 못 찾은 것으로 간주하고 빈 결과를 반환한다.
+    return _parse_silencedetect_output(result.stderr or "")
 
 
 def _parse_silencedetect_output(stderr_text: str) -> List[Interval]:
