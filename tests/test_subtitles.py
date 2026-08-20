@@ -29,6 +29,20 @@ class TestRemapWords(unittest.TestCase):
         self.assertAlmostEqual(result[0].start, 3.0)
         self.assertAlmostEqual(result[0].end, 3.4)
 
+    def test_words_squeezed_together_by_a_cut_do_not_overlap(self):
+        """실사용자 리포트: 필러워드/무음 컷으로 두 단어 사이 간격이 좁아지면, 원래 길이를
+        그대로 유지한 단어들이 새 타임라인에서 서로 겹쳐 pycapcut이 CapCut 드래프트 생성
+        자체를 "New segment overlaps with existing segment"로 거부했다. 컷 경계 바로
+        양옆의 두 단어(둘 다 원래 길이가 길고, 컷 이후 서로 가까워짐)로 이 상황을 재현한다."""
+        # 두 단어 다 원래 길이가 길고(0.8초), 그 사이의 [1.0, 1.6] 구간이 컷되어
+        # 새 타임라인에서는 중간점끼리 0.6초밖에 떨어지지 않는다 - 각자 원래 길이(0.8초)를
+        # 그대로 유지하면 겹칠 수밖에 없는 상황.
+        keep = [Interval(0.0, 1.0), Interval(1.6, 2.6)]
+        words = [Word(0.5, 1.3, "keep-A"), Word(1.7, 2.5, "keep-B")]
+        result = remap_words_to_new_timeline(words, keep)
+        self.assertEqual(len(result), 2)
+        self.assertLessEqual(result[0].end, result[1].start)
+
 
 class TestGroupWordsIntoLines(unittest.TestCase):
     def test_splits_on_large_gap(self):

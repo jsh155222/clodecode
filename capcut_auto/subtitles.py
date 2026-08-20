@@ -32,6 +32,17 @@ def remap_words_to_new_timeline(words: Sequence[Word], keep_intervals: Sequence[
             continue
         duration = w.end - w.start
         remapped.append(Word(new_mid - duration / 2, new_mid + duration / 2, w.text))
+
+    # 컷으로 두 단어 사이의 간격이 좁아져도 각 단어는 원래 길이를 그대로 유지하므로,
+    # 컷 경계 바로 앞뒤에 있던 단어들의 새 타임라인 위치가 서로 겹칠 수 있다(실사용자
+    # 리포트: pycapcut이 "New segment overlaps with existing segment"로 드래프트 생성
+    # 자체를 거부함). map_time_to_new_timeline은 순서를 뒤집지 않으므로(중간점 기준
+    # 비감소), 앞 단어의 끝을 다음 단어의 시작 너머로 넘어가지 않게 당겨서 겹침을 없앤다.
+    for i in range(1, len(remapped)):
+        prev = remapped[i - 1]
+        if prev.end > remapped[i].start:
+            new_end = max(prev.start, remapped[i].start)
+            remapped[i - 1] = Word(prev.start, new_end, prev.text)
     return remapped
 
 
