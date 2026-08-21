@@ -7,7 +7,7 @@ import os
 import platform
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Dict, Optional, Sequence, Tuple
 
 from .subtitles import SubtitleLine
 from .timeline import Interval
@@ -32,6 +32,30 @@ def default_capcut_drafts_dir() -> Optional[str]:
 
 
 @dataclass
+class TextBorderSpec:
+    """pycapcut TextBorder에 그대로 대응 - build_draft에서만 cc.TextBorder로 변환한다
+    (pycapcut이 설치되어 있지 않아도 이 모듈을 import/테스트할 수 있게 하기 위함)."""
+
+    color: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    width: float = 40.0
+    alpha: float = 1.0
+
+
+@dataclass
+class TextBackgroundSpec:
+    """pycapcut TextBackground에 그대로 대응. 같은 이유로 여기선 순수 데이터클래스로만 둔다."""
+
+    color: str = "#000000"
+    alpha: float = 0.65
+    style: int = 1
+    round_radius: float = 0.0
+    height: float = 0.16
+    width: float = 0.6
+    horizontal_offset: float = 0.5
+    vertical_offset: float = 0.5
+
+
+@dataclass
 class SubtitleAppearance:
     size: float = 8.0
     color: tuple = (1.0, 1.0, 1.0)
@@ -41,6 +65,65 @@ class SubtitleAppearance:
     # 위가 양수/아래가 음수). CapCut이 자체적으로 자막을 넣을 때 쓰는 기본값은 -0.8(화면 맨
     # 아래쪽) - 여기서는 화면 중앙보다는 아래쪽이면서 조금 더 여유를 둔 -0.6을 기본값으로 쓴다.
     vertical_position: float = -0.6
+    border: Optional[TextBorderSpec] = None
+    background: Optional[TextBackgroundSpec] = None
+
+
+# 사용자가 "2/3 위 / 중간 / 2/3 아래" 중 고를 수 있는 세로 위치 프리셋.
+SUBTITLE_POSITION_PRESETS: Dict[str, float] = {
+    "upper": 0.6,
+    "middle": 0.0,
+    "lower": -0.6,
+}
+SUBTITLE_POSITION_LABELS: Dict[str, str] = {
+    "upper": "화면 위쪽 (2/3 지점)",
+    "middle": "화면 중앙",
+    "lower": "화면 아래쪽 (2/3 지점, 기본)",
+}
+
+# 자막 스타일 프리셋. GUI에서 이름으로 고르면 build_subtitle_appearance()가 실제
+# SubtitleAppearance로 변환한다.
+SUBTITLE_STYLE_PRESETS: Dict[str, dict] = {
+    "default": {"color": (1.0, 1.0, 1.0), "bold": True, "border": None, "background": None},
+    "yellow_outline": {
+        "color": (1.0, 0.85, 0.0),
+        "bold": True,
+        "border": TextBorderSpec(color=(0.0, 0.0, 0.0), width=40.0),
+        "background": None,
+    },
+    "white_outline": {
+        "color": (1.0, 1.0, 1.0),
+        "bold": True,
+        "border": TextBorderSpec(color=(0.0, 0.0, 0.0), width=30.0),
+        "background": None,
+    },
+    "black_box": {
+        "color": (1.0, 1.0, 1.0),
+        "bold": True,
+        "border": None,
+        "background": TextBackgroundSpec(color="#000000", alpha=0.65, width=0.6, height=0.16),
+    },
+}
+SUBTITLE_STYLE_LABELS: Dict[str, str] = {
+    "default": "기본 (흰 글씨)",
+    "yellow_outline": "노란 글씨 + 검정 테두리",
+    "white_outline": "흰 글씨 + 검정 테두리",
+    "black_box": "흰 글씨 + 검정 배경 박스",
+}
+
+
+def build_subtitle_appearance(style: str = "default", position: str = "lower", size: float = 8.0) -> SubtitleAppearance:
+    """스타일/위치 프리셋 이름으로 SubtitleAppearance를 만든다."""
+    preset = SUBTITLE_STYLE_PRESETS.get(style, SUBTITLE_STYLE_PRESETS["default"])
+    vertical_position = SUBTITLE_POSITION_PRESETS.get(position, SUBTITLE_POSITION_PRESETS["lower"])
+    return SubtitleAppearance(
+        size=size,
+        color=preset["color"],
+        bold=preset["bold"],
+        vertical_position=vertical_position,
+        border=preset["border"],
+        background=preset["background"],
+    )
 
 
 def build_draft(
@@ -95,6 +178,24 @@ def build_draft(
         script.add_segment(video_seg, video_track_name)
         cursor_us += duration_us
 
+    def _border_and_background(a: SubtitleAppearance):
+        border_obj = None
+        if a.border:
+            border_obj = cc.TextBorder(color=a.border.color, width=a.border.width, alpha=a.border.alpha)
+        background_obj = None
+        if a.background:
+            background_obj = cc.TextBackground(
+                color=a.background.color,
+                style=a.background.style,
+                alpha=a.background.alpha,
+                round_radius=a.background.round_radius,
+                height=a.background.height,
+                width=a.background.width,
+                horizontal_offset=a.background.horizontal_offset,
+                vertical_offset=a.background.vertical_offset,
+            )
+        return border_obj, background_obj
+
     style = cc.TextStyle(
         size=appearance.size,
         color=appearance.color,
@@ -102,13 +203,16 @@ def build_draft(
         align=appearance.align,
     )
     clip_settings = cc.ClipSettings(transform_y=appearance.vertical_position)
+    border, background = _border_and_background(appearance)
     for line in subtitle_lines:
         duration_us = int(round((line.end - line.start) * SEC))
         if duration_us <= 0:
             continue
         start_us = int(round(line.start * SEC))
         text_tr = cc.Timerange(start_us, duration_us)
-        text_seg = cc.TextSegment(line.text, text_tr, style=style, clip_settings=clip_settings)
+        text_seg = cc.TextSegment(
+            line.text, text_tr, style=style, clip_settings=clip_settings, border=border, background=background
+        )
         script.add_segment(text_seg, subtitle_track_name)
 
     if hook_text:
@@ -124,9 +228,17 @@ def build_draft(
             align=h_appearance.align,
         )
         hook_clip_settings = cc.ClipSettings(transform_y=h_appearance.vertical_position)
+        hook_border, hook_background = _border_and_background(h_appearance)
         hook_duration_us = int(round(hook_duration * SEC))
         hook_tr = cc.Timerange(0, hook_duration_us)
-        hook_seg = cc.TextSegment(hook_text, hook_tr, style=hook_style, clip_settings=hook_clip_settings)
+        hook_seg = cc.TextSegment(
+            hook_text,
+            hook_tr,
+            style=hook_style,
+            clip_settings=hook_clip_settings,
+            border=hook_border,
+            background=hook_background,
+        )
         script.add_segment(hook_seg, hook_track_name)
 
     script.save()

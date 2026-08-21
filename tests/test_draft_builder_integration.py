@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from capcut_auto.draft_builder import build_draft
+from capcut_auto.draft_builder import build_draft, build_subtitle_appearance
 from capcut_auto.subtitles import SubtitleLine
 from capcut_auto.timeline import Interval
 
@@ -129,6 +129,37 @@ class TestDraftBuilderIntegration(unittest.TestCase):
 
             self.assertLess(positions["subtitle"], 0.0)
             self.assertNotEqual(positions["subtitle"], positions["hook"])
+
+    def test_position_and_style_presets_apply_to_generated_draft(self):
+        """실사용자 요청: 자막 위치(2/3 위/중간/2/3 아래)와 스타일을 고를 수 있는 기능.
+        build_subtitle_appearance로 만든 프리셋이 실제 draft_content.json에 반영되는지
+        (세로 위치 + 노란 글씨 + 검정 테두리) 실제 pycapcut으로 확인한다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "test.mp4")
+            _make_synthetic_video(video_path)
+
+            drafts_dir = str(Path(tmp) / "drafts")
+            Path(drafts_dir).mkdir()
+
+            appearance = build_subtitle_appearance(style="yellow_outline", position="upper", size=8.0)
+            build_draft(
+                video_path=video_path,
+                keep_intervals=[Interval(0.0, 2.0)],
+                subtitle_lines=[SubtitleLine(start=0.0, end=1.0, text="hello")],
+                draft_name="draft_style",
+                capcut_drafts_dir=drafts_dir,
+                subtitle_appearance=appearance,
+            )
+
+            draft_dir = Path(drafts_dir) / "draft_style"
+            content = json.loads((draft_dir / "draft_content.json").read_text(encoding="utf-8"))
+            subtitle_track = next(t for t in content["tracks"] if t["type"] == "text" and t["name"] == "subtitle")
+            self.assertEqual(subtitle_track["segments"][0]["clip"]["transform"]["y"], 0.6)
+
+            text_style = json.loads(content["materials"]["texts"][0]["content"])["styles"][0]
+            self.assertEqual(text_style["fill"]["content"]["solid"]["color"], [1.0, 0.85, 0.0])
+            self.assertEqual(len(text_style["strokes"]), 1)
+            self.assertEqual(text_style["strokes"][0]["content"]["solid"]["color"], [0.0, 0.0, 0.0])
 
 
 if __name__ == "__main__":

@@ -14,10 +14,19 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from .draft_builder import default_capcut_drafts_dir
+from .draft_builder import (
+    SUBTITLE_POSITION_LABELS,
+    SUBTITLE_STYLE_LABELS,
+    default_capcut_drafts_dir,
+)
 from .pipeline import PipelineError, PipelineOptions, PipelineResult, run_pipeline
 
 WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
+
+# 위치/스타일은 콤보박스에 한글 라벨로 보여주고, 실제 파이프라인에는 키(예: "lower")로
+# 넘겨야 하므로 라벨<->키를 양방향으로 오간다.
+_POSITION_LABEL_TO_KEY = {v: k for k, v in SUBTITLE_POSITION_LABELS.items()}
+_STYLE_LABEL_TO_KEY = {v: k for k, v in SUBTITLE_STYLE_LABELS.items()}
 
 
 class CapCutAutoApp:
@@ -59,6 +68,8 @@ class CapCutAutoApp:
         self.subtitle_max_duration_var = tk.DoubleVar(value=5.0)
         self.subtitle_max_gap_var = tk.DoubleVar(value=0.6)
         self.subtitle_size_var = tk.DoubleVar(value=8.0)
+        self.subtitle_position_var = tk.StringVar(value=SUBTITLE_POSITION_LABELS["lower"])
+        self.subtitle_style_var = tk.StringVar(value=SUBTITLE_STYLE_LABELS["default"])
 
         self.enable_silence_cut_var = tk.BooleanVar(value=True)
         self.enable_filler_cut_var = tk.BooleanVar(value=True)
@@ -151,6 +162,27 @@ class CapCutAutoApp:
             row=row, column=0, columnspan=2, sticky=tk.W
         )
         row += 1
+
+        ttk.Label(parent, text="자막 위치").grid(row=row, column=0, sticky=tk.W, pady=4)
+        ttk.Combobox(
+            parent,
+            textvariable=self.subtitle_position_var,
+            values=list(SUBTITLE_POSITION_LABELS.values()),
+            state="readonly",
+            width=22,
+        ).grid(row=row, column=1, columnspan=2, sticky=tk.W, padx=5)
+        row += 1
+
+        ttk.Label(parent, text="자막 스타일").grid(row=row, column=0, sticky=tk.W, pady=4)
+        ttk.Combobox(
+            parent,
+            textvariable=self.subtitle_style_var,
+            values=list(SUBTITLE_STYLE_LABELS.values()),
+            state="readonly",
+            width=22,
+        ).grid(row=row, column=1, columnspan=2, sticky=tk.W, padx=5)
+        row += 1
+
         ttk.Checkbutton(
             parent,
             text="미리보기만 실행 (CapCut 드래프트를 만들지 않고 컷/자막 리포트만 생성)",
@@ -227,6 +259,8 @@ class CapCutAutoApp:
             subtitle_max_duration=self.subtitle_max_duration_var.get(),
             subtitle_max_gap=self.subtitle_max_gap_var.get(),
             subtitle_size=self.subtitle_size_var.get(),
+            subtitle_position=_POSITION_LABEL_TO_KEY.get(self.subtitle_position_var.get(), "lower"),
+            subtitle_style=_STYLE_LABEL_TO_KEY.get(self.subtitle_style_var.get(), "default"),
             disable_silence_cut=not self.enable_silence_cut_var.get(),
             disable_filler_cut=not self.enable_filler_cut_var.get(),
             disable_repetition_cut=not self.enable_repetition_cut_var.get(),

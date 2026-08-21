@@ -16,7 +16,7 @@ from . import cutlist as cutlist_mod
 from . import silence as silence_mod
 from . import stutter as stutter_mod
 from . import subtitles as subtitles_mod
-from .draft_builder import SubtitleAppearance, build_draft, default_capcut_drafts_dir
+from .draft_builder import build_draft, build_subtitle_appearance, default_capcut_drafts_dir
 from .transcribe import transcribe as transcribe_audio
 
 LogFn = Callable[[str], None]
@@ -50,6 +50,8 @@ class PipelineOptions:
     subtitle_max_duration: float = 5.0
     subtitle_max_gap: float = 0.6
     subtitle_size: float = 8.0
+    subtitle_position: str = "lower"  # "upper" | "middle" | "lower" (draft_builder.SUBTITLE_POSITION_PRESETS)
+    subtitle_style: str = "default"  # draft_builder.SUBTITLE_STYLE_PRESETS 키
 
     disable_silence_cut: bool = False
     disable_filler_cut: bool = False
@@ -175,7 +177,9 @@ def run_pipeline(opts: PipelineOptions, log: LogFn = _noop_log) -> PipelineResul
             capcut_drafts_dir=drafts_dir,
             width=opts.width,
             height=opts.height,
-            subtitle_appearance=SubtitleAppearance(size=opts.subtitle_size),
+            subtitle_appearance=build_subtitle_appearance(
+                style=opts.subtitle_style, position=opts.subtitle_position, size=opts.subtitle_size
+            ),
         )
         log("완료! CapCut에서 드래프트를 열어 확인하세요.")
 
