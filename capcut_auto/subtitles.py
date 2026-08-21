@@ -51,6 +51,7 @@ def group_words_into_lines(
     max_chars: int = 24,
     max_duration: float = 5.0,
     max_gap: float = 0.6,
+    max_gap_fill: float = 2.0,
 ) -> List[SubtitleLine]:
     """연속된 단어들을 자막 한 줄 단위로 묶는다.
 
@@ -58,6 +59,11 @@ def group_words_into_lines(
     - 글자 수가 max_chars를 넘어감
     - 줄 전체 길이가 max_duration을 넘어감
     - 이전 단어와의 간격이 max_gap보다 김(자연스러운 끊어읽기)
+
+    줄이 나뉘는 지점(자연스러운 끊어읽기)마다 자막이 잠깐 사라졌다 나타나는 깜빡임이
+    생기지 않도록, 다음 줄이 시작하기 전까지 이전 줄을 그대로 띄워둔다(간격을 메운다).
+    다만 그 간격이 `max_gap_fill`보다 길면(무음 컷을 꺼둔 경우 등 실제로 한참 말이
+    없는 구간) 억지로 메우지 않고 비워 둔다 - 옛날 대사가 계속 떠 있는 게 더 부자연스럽다.
     """
     lines: List[SubtitleLine] = []
     current: List[Word] = []
@@ -79,6 +85,12 @@ def group_words_into_lines(
                 current = []
         current.append(w)
     flush()
+
+    for i in range(len(lines) - 1):
+        gap = lines[i + 1].start - lines[i].end
+        if 0 < gap <= max_gap_fill:
+            lines[i] = SubtitleLine(lines[i].start, lines[i + 1].start, lines[i].text)
+
     return lines
 
 

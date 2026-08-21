@@ -100,6 +100,36 @@ class TestDraftBuilderIntegration(unittest.TestCase):
 
             self.assertEqual(len(all_ids), 4, "두 드래프트가 id를 공유하면 안 됨")
 
+    def test_subtitles_are_positioned_below_center_by_default(self):
+        """실사용자 리포트: 자막이 화면 중앙에 그대로 떠서(위치 조정을 전혀 안 했었음) 너무
+        중앙에 있다는 문제. 기본값으로 화면 중앙(0.0)보다 아래쪽에 배치되는지 확인하고,
+        훅 텍스트는 같은 시간대에 자막과 겹쳐 보이지 않도록 자막과 다른 위치에 있는지도
+        함께 확인한다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = str(Path(tmp) / "test.mp4")
+            _make_synthetic_video(video_path)
+
+            drafts_dir = str(Path(tmp) / "drafts")
+            Path(drafts_dir).mkdir()
+
+            build_draft(
+                video_path=video_path,
+                keep_intervals=[Interval(0.0, 2.0)],
+                subtitle_lines=[SubtitleLine(start=0.0, end=1.0, text="hello")],
+                draft_name="draft_position",
+                capcut_drafts_dir=drafts_dir,
+                hook_text="hook!",
+            )
+
+            content = json.loads((Path(drafts_dir) / "draft_position" / "draft_content.json").read_text(encoding="utf-8"))
+            positions = {}
+            for track in content["tracks"]:
+                if track["type"] == "text":
+                    positions[track["name"]] = track["segments"][0]["clip"]["transform"]["y"]
+
+            self.assertLess(positions["subtitle"], 0.0)
+            self.assertNotEqual(positions["subtitle"], positions["hook"])
+
 
 if __name__ == "__main__":
     unittest.main()

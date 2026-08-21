@@ -58,6 +58,21 @@ class TestGroupWordsIntoLines(unittest.TestCase):
         self.assertEqual(lines[0].start, 0.0)
         self.assertEqual(lines[0].end, 0.7)
 
+    def test_fills_short_gap_between_lines_to_avoid_flicker(self):
+        """실사용자 리포트: 줄 사이에 자막이 없는 짧은 공백마다 자막이 나타났다 사라졌다
+        하는 깜빡임이 느껴진다는 문제. 다음 줄이 시작하기 전까지 이전 줄을 계속 띄워
+        공백을 메워야 한다(단, 무한정 늘리지 않고 max_gap_fill까지만)."""
+        words = [Word(0.0, 0.3, "안녕"), Word(1.2, 1.5, "하세요")]
+        lines = group_words_into_lines(words, max_gap=0.5, max_gap_fill=2.0)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].end, lines[1].start)  # 공백 없이 이어짐
+
+    def test_does_not_fill_very_long_gap(self):
+        words = [Word(0.0, 0.3, "안녕"), Word(10.0, 10.3, "하세요")]
+        lines = group_words_into_lines(words, max_gap=0.5, max_gap_fill=2.0)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].end, 0.3)  # 원래 끝 시각 그대로, 억지로 늘리지 않음
+
     def test_splits_on_max_chars(self):
         words = [Word(i * 0.5, i * 0.5 + 0.3, "가나다") for i in range(10)]
         lines = group_words_into_lines(words, max_chars=10, max_gap=10, max_duration=100)

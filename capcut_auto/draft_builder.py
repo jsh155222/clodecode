@@ -37,6 +37,10 @@ class SubtitleAppearance:
     color: tuple = (1.0, 1.0, 1.0)
     bold: bool = True
     align: int = 1  # 0=left, 1=center, 2=right
+    # pycapcut ClipSettings.transform_y와 동일한 단위(캔버스 절반 높이 = 1.0, 화면 중앙이 0,
+    # 위가 양수/아래가 음수). CapCut이 자체적으로 자막을 넣을 때 쓰는 기본값은 -0.8(화면 맨
+    # 아래쪽) - 여기서는 화면 중앙보다는 아래쪽이면서 조금 더 여유를 둔 -0.6을 기본값으로 쓴다.
+    vertical_position: float = -0.6
 
 
 def build_draft(
@@ -97,26 +101,32 @@ def build_draft(
         bold=appearance.bold,
         align=appearance.align,
     )
+    clip_settings = cc.ClipSettings(transform_y=appearance.vertical_position)
     for line in subtitle_lines:
         duration_us = int(round((line.end - line.start) * SEC))
         if duration_us <= 0:
             continue
         start_us = int(round(line.start * SEC))
         text_tr = cc.Timerange(start_us, duration_us)
-        text_seg = cc.TextSegment(line.text, text_tr, style=style)
+        text_seg = cc.TextSegment(line.text, text_tr, style=style, clip_settings=clip_settings)
         script.add_segment(text_seg, subtitle_track_name)
 
     if hook_text:
-        h_appearance = hook_appearance or SubtitleAppearance(size=appearance.size * 1.5, bold=True)
+        # 훅 텍스트는 자막과 같은 화면 구간(영상 맨 앞)에 동시에 뜰 수 있으므로, 자막과
+        # 같은 하단 위치를 쓰면 서로 겹쳐 보인다 - 기본값은 화면 중앙으로 띄운다.
+        h_appearance = hook_appearance or SubtitleAppearance(
+            size=appearance.size * 1.5, bold=True, vertical_position=0.0
+        )
         hook_style = cc.TextStyle(
             size=h_appearance.size,
             color=h_appearance.color,
             bold=h_appearance.bold,
             align=h_appearance.align,
         )
+        hook_clip_settings = cc.ClipSettings(transform_y=h_appearance.vertical_position)
         hook_duration_us = int(round(hook_duration * SEC))
         hook_tr = cc.Timerange(0, hook_duration_us)
-        hook_seg = cc.TextSegment(hook_text, hook_tr, style=hook_style)
+        hook_seg = cc.TextSegment(hook_text, hook_tr, style=hook_style, clip_settings=hook_clip_settings)
         script.add_segment(hook_seg, hook_track_name)
 
     script.save()
