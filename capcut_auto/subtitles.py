@@ -23,14 +23,27 @@ def remap_words_to_new_timeline(words: Sequence[Word], keep_intervals: Sequence[
     단어의 중간 지점(midpoint)이 컷 구간 안에 있으면 그 단어는 완전히
     잘려나간 것으로 보고 제외한다. 그렇지 않으면 원래 길이를 유지한 채
     새 타임라인 위치로 옮긴다.
+
+    다만 whisper 단어 타임스탬프는 완전히 정확하지 않아서, 실제로는 영상에 남아있는
+    말인데도 그 단어의 중간점만 컷 경계 바로 안쪽(주로 필러워드 컷의 여유 확장 구간)에
+    살짝 걸려 자막에서 통째로 빠지는 경우가 있다(실사용자 리포트: "말이 다 자막으로
+    적용이 안 됨"). 중간점이 컷 구간에 걸리더라도 단어의 시작이나 끝 중 하나라도
+    keep 구간에 남아있으면(=단어 일부가 실제로 살아남았으면) 살려서 자막에 남긴다.
     """
     remapped: List[Word] = []
     for w in words:
+        duration = w.end - w.start
         midpoint = (w.start + w.end) / 2
         new_mid = map_time_to_new_timeline(midpoint, keep_intervals)
         if new_mid is None:
-            continue
-        duration = w.end - w.start
+            new_start = map_time_to_new_timeline(w.start, keep_intervals)
+            new_end = map_time_to_new_timeline(w.end, keep_intervals)
+            if new_start is not None:
+                new_mid = new_start + duration / 2
+            elif new_end is not None:
+                new_mid = new_end - duration / 2
+            else:
+                continue
         remapped.append(Word(new_mid - duration / 2, new_mid + duration / 2, w.text))
 
     # 컷으로 두 단어 사이의 간격이 좁아져도 각 단어는 원래 길이를 그대로 유지하므로,

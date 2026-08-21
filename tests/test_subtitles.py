@@ -29,6 +29,18 @@ class TestRemapWords(unittest.TestCase):
         self.assertAlmostEqual(result[0].start, 3.0)
         self.assertAlmostEqual(result[0].end, 3.4)
 
+    def test_keeps_word_whose_midpoint_lands_in_cut_but_edge_survives(self):
+        """실사용자 리포트: "말이 다 자막으로 적용이 안 됨". whisper 타임스탬프가 조금만
+        어긋나도, 실제로는 영상에 남아있는 단어의 '중간점'만 컷 경계 바로 안쪽(예: 필러워드
+        컷의 여유 확장 구간)에 걸리면 예전 로직은 그 단어를 통째로 버렸다. 단어의 시작이나
+        끝 중 하나라도 keep 구간에 남아있으면 자막에서 사라지면 안 된다."""
+        keep = [Interval(0.0, 1.0), Interval(1.5, 3.0)]
+        # 중간점(1.25)은 컷 구간[1.0, 1.5] 안이지만, 시작(0.9)은 keep 구간 안에 있다.
+        words = [Word(0.9, 1.6, "straddles-the-cut")]
+        result = remap_words_to_new_timeline(words, keep)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].text, "straddles-the-cut")
+
     def test_words_squeezed_together_by_a_cut_do_not_overlap(self):
         """실사용자 리포트: 필러워드/무음 컷으로 두 단어 사이 간격이 좁아지면, 원래 길이를
         그대로 유지한 단어들이 새 타임라인에서 서로 겹쳐 pycapcut이 CapCut 드래프트 생성
