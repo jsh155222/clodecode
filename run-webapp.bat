@@ -22,28 +22,15 @@ if exist "ffmpeg\bin\ffmpeg.exe" (
 echo CapCut Auto Editor를 준비하는 중입니다...
 start "CapCut Auto Editor 서버 - 이 창을 닫으면 프로그램이 종료됩니다" /min ".venv\Scripts\python.exe" -m uvicorn capcut_auto.server:app --host 127.0.0.1 --port %CAPCUT_PORT%
 
-set READY=0
-for /l %%i in (1,1,60) do (
-    if !READY! equ 0 (
-        curl -s -f http://127.0.0.1:%CAPCUT_PORT%/ >nul 2>nul
-        if !errorlevel! equ 0 (
-            set READY=1
-        ) else (
-            timeout /t 1 >nul
-        )
-    )
-)
-
-if !READY! equ 0 (
-    echo.
-    echo [오류] 서버가 제한 시간 안에 시작되지 않았습니다.
-    echo 새로 뜬 "CapCut Auto Editor 서버" 창에 오류 메시지가 있는지 확인해주세요.
-    pause
-    exit /b 1
-)
+timeout /t 6 >nul
 
 start "" "http://127.0.0.1:%CAPCUT_PORT%/"
-echo 브라우저에서 CapCut Auto Editor가 열렸습니다.
+echo.
+echo 브라우저에서 CapCut Auto Editor를 열었습니다.
+echo 화면이 비어있거나 오류가 보이면, 몇 초 더 기다렸다가
+echo 브라우저에서 새로고침^(F5^)을 한 번 눌러주세요.
+echo.
 echo 프로그램을 끝내려면, 작업 표시줄에 최소화되어 있는
 echo "CapCut Auto Editor 서버" 창을 찾아 닫아주세요.
+echo.
 pause
