@@ -30,7 +30,25 @@ def transcribe(
     """오디오를 전사하고 단어 단위 타임스탬프 리스트를 반환한다.
 
     Requires: pip install faster-whisper
+
+    vad_filter(음성 활동 감지)가 배경 소음이 섞인 오디오(실외/드론 녹음 등)에서 실제
+    대사가 있는데도 전부 "말 없음"으로 걸러내 통째로 단어 0개가 나오는 경우가 실사용자
+    리포트로 확인됐다. 그런 경우 vad_filter 없이 한 번 더 시도해 구제한다.
     """
+    words = _transcribe_once(audio_path, model_size, language, device, compute_type, vad_filter)
+    if not words and vad_filter:
+        words = _transcribe_once(audio_path, model_size, language, device, compute_type, vad_filter=False)
+    return words
+
+
+def _transcribe_once(
+    audio_path: str,
+    model_size: str,
+    language: str,
+    device: str,
+    compute_type: str,
+    vad_filter: bool,
+) -> List[Word]:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:  # pragma: no cover - 환경 의존적
